@@ -4,7 +4,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Prevent noise from very recent releases
     minimum-release-age: 14
     open-pull-requests-limit: 10
     groups:
@@ -23,7 +22,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Prevent noise from very recent releases
     minimum-release-age: 14
     open-pull-requests-limit: 10
     groups:

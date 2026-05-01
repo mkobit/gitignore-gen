@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Setup uv
-        uses: astral-sh/setup-uv@f98a31a027f32a7660d2efe93ef859663717208d # v5.2.1
+        uses: astral-sh/setup-uv@f982bc62779133b2f191c8223589274f2467d871 # v5.2.1
         with:
           enable-cache: true
       
@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Setup uv
-        uses: astral-sh/setup-uv@f98a31a027f32a7660d2efe93ef859663717208d # v5.2.1
+        uses: astral-sh/setup-uv@f982bc62779133b2f191c8223589274f2467d871 # v5.2.1
         with:
           enable-cache: true
       
