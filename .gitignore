@@ -1,2 +1,7 @@
-*.pyc\n__pycache__/\n.venv/\n.uv/\n.mise.xml\n
+*.pyc
+__pycache__/
+.venv/
+.uv/
+.mise.xml
 tests/fixtures/
+conductor/
