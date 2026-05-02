@@ -50,5 +50,12 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       
+      - name: Checkout gitignore templates fixture
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: github/gitignore
+          ref: 1046d8fba6b42d367da6314c934cddb6bfe5662e
+          path: tests/fixtures/gitignore
+      
       - name: Run tests
         run: uv run pytest tests/
