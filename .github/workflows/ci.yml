@@ -55,7 +55,7 @@ jobs:
         with:
           repository: github/gitignore
           ref: 1046d8fba6b42d367da6314c934cddb6bfe5662e
-          path: tests/fixtures/gitignore
+          path: .test_fixtures/gitignore
       
       - name: Run tests
         run: uv run pytest tests/

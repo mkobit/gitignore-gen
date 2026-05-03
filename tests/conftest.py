@@ -12,7 +12,8 @@ TEMPLATE_URL = f"https://codeload.github.com/github/gitignore/tar.gz/{TEMPLATE_S
 @pytest.fixture(scope="session")
 def templates_dir() -> Path:
     """Fixture to provide a local directory of gitignore templates."""
-    fixture_dir = Path(__file__).parent / "fixtures" / "gitignore"
+    # Move from tests/fixtures/gitignore to .test_fixtures/gitignore at the root
+    fixture_dir = Path(__file__).parent.parent / ".test_fixtures" / "gitignore"
 
     if not fixture_dir.exists():
         fixture_dir.mkdir(parents=True, exist_ok=True)

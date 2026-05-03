@@ -3,4 +3,4 @@ __pycache__/
 .venv/
 .uv/
 .mise.xml
-tests/fixtures/
+.test_fixtures/
