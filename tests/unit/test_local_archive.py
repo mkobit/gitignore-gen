@@ -37,3 +37,13 @@ async def test_local_archive_source(tmp_path: Path, capsys: pytest.CaptureFixtur
     captured = capsys.readouterr()
     assert "__pycache__/" in captured.out
     assert "node_modules/" not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_local_archive_source_failure(tmp_path: Path):
+    """Test local archive source with a non-existent file."""
+    with pytest.raises(SystemExit) as exc:
+        await async_main(
+            ["ls", "--local-archive", str(tmp_path / "missing.tar.gz"), "Python"]
+        )
+    assert exc.value.code == 1

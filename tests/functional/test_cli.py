@@ -1,8 +1,9 @@
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from gitignore_gen.cli import async_main
+from gitignore_gen.cli import _handle_inclusion, async_main
 
 
 @pytest.mark.asyncio
@@ -130,3 +131,69 @@ async def test_cli_no_fail_on_missing(
     )
     captured = capsys.readouterr()
     assert "Python.gitignore" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_custom_header(
+    templates_dir: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test custom file header template."""
+    # Note: using generate first then arguments
+    await async_main(
+        [
+            "generate",
+            "Python",
+            "--local-dir",
+            str(templates_dir),
+            "--file-header-template",
+            "HEADER {date}",
+            "--no-include-section-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "HEADER 2026-" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_no_templates_collected(
+    templates_dir: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test when pipeline exists but no templates are collected."""
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "--no-fail-on-missing",
+            "MissingTemplate",
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_cli_section_order_lexicographic(
+    templates_dir: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test lexicographic section order."""
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "macOS",
+            "Python",
+            "--section-order",
+            "lexicographic",
+            "--no-include-file-header",
+            "--no-include-section-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert captured.out != ""
+
+
+@pytest.mark.asyncio
+async def test_handle_inclusion_edge_case():
+    """Test _handle_inclusion with an unknown destination."""
+    res = await _handle_inclusion("unknown", "val", Mock(), [], Mock())
+    assert res == []

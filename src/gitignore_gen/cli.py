@@ -511,16 +511,14 @@ def _create_parser() -> argparse.ArgumentParser:
     output.add_argument(
         "--no-include-file-header", action="store_false", dest="include_file_header"
     )
-    output.add_argument("--file-header-template", action=PipelineAction, metavar="STR")
+    output.add_argument("--file-header-template", metavar="STR")
     output.add_argument("--include-section-header", action="store_true", default=True)
     output.add_argument(
         "--no-include-section-header",
         action="store_false",
         dest="include_section_header",
     )
-    output.add_argument(
-        "--section-header-template", action=PipelineAction, metavar="STR"
-    )
+    output.add_argument("--section-header-template", metavar="STR")
 
     return parser
 
