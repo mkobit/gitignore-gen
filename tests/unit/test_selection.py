@@ -1,9 +1,12 @@
 from unittest.mock import Mock
 
+import pytest
+
 from gitignore_gen.cli import SelectionRequest, TemplateMember
 
 
-def test_selection_request_filename():
+@pytest.mark.asyncio
+async def test_selection_request_filename():
     req = SelectionRequest("filename", "Python")
     member = Mock(spec=TemplateMember)
     member.path = "Python.gitignore"
@@ -13,7 +16,8 @@ def test_selection_request_filename():
     assert not req.matches(member)
 
 
-def test_selection_request_path():
+@pytest.mark.asyncio
+async def test_selection_request_path():
     req = SelectionRequest("path", "Global/macOS.gitignore")
     member = Mock(spec=TemplateMember)
     member.path = "Global/macOS.gitignore"

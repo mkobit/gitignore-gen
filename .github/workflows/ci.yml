@@ -59,3 +59,18 @@ jobs:
       
       - name: Run tests
         run: uv run pytest tests/
+
+  standalone-check:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      
+      - name: Verify standalone script execution
+        run: |
+          # Copy the core logic to a standalone file
+          cp src/gitignore_gen/cli.py standalone.py
+          # Run it with a clean Python environment (no installed package)
+          # We just check --help to ensure it doesn't have missing imports
+          python3 standalone.py --help

@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: 'Type of release (major, minor, patch)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@b5f58b2abc5763ade55e4e9d0fe52cd1ff7979ca
+        with:
+          enable-cache: true
+
+      - name: Python Semantic Release
+        uses: python-semantic-release/python-semantic-release@473857367f0b2f33c09930f730248232959828d1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Use force to override the commit-based logic if manually triggered
+          force: ${{ github.event.inputs.release-type }}
