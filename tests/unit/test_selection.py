@@ -26,6 +26,18 @@ async def test_selection_request_filename():
 
 
 @pytest.mark.asyncio
+async def test_selection_request_nested_path():
+    """Test matching with nested paths in positional arguments."""
+    req = SelectionRequest("templates", "Global/macOS")
+    member = Mock(spec=TemplateMember)
+    member.path = "Global/macOS.gitignore"
+    assert req.matches(member)
+
+    member.path = "Python.gitignore"
+    assert not req.matches(member)
+
+
+@pytest.mark.asyncio
 async def test_selection_request_path():
     """Test path suffix matching."""
     req = SelectionRequest("path", "Global/macOS.gitignore")

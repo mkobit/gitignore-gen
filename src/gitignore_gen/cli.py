@@ -396,6 +396,8 @@ class SelectionRequest:
         if self.type == "file_i":
             return name_match(n, self.pattern, case_sensitive=False)
         if self.type in {"filename", "templates"}:
+            if "/" in self.pattern:
+                return name_match(m.path, self.pattern)
             return name_match(n, self.pattern)
         return bool(self.type == "regex" and re.search(self.pattern, m.path))
 
