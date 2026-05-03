@@ -2,3 +2,6 @@
 uv = "0.11.7"
 
 
+
+[settings]
+locked = true

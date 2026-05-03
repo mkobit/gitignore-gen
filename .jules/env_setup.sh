@@ -8,9 +8,9 @@ if ! command -v mise &> /dev/null; then
     exit 1
 fi
 
-echo "Installing tools with mise..."
+echo "Installing tools with mise (isolated)..."
 mise trust
-mise install
+MISE_GLOBAL_CONFIG_FILE=/dev/null mise install
 
 echo "Installing dependencies with uv..."
 uv sync
