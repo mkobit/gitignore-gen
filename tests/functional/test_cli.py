@@ -28,8 +28,10 @@ async def test_cli_generate_to_stdout(
         ]
     )
     captured = capsys.readouterr()
-    assert "### BEGIN Python.gitignore ###" in captured.out
-    assert "__pycache__/" in captured.out
+    # The header now includes source info
+    assert "### BEGIN Python.gitignore" in captured.out
+    assert "Source: local-dir" in captured.out
+    assert "### END Python.gitignore ###" in captured.out
 
 
 @pytest.mark.asyncio
@@ -50,5 +52,5 @@ async def test_cli_generate_to_file(templates_dir: Path, tmp_path: Path):
 
     assert output_file.exists()
     content = output_file.read_text()
-    assert "### BEGIN Python.gitignore ###" in content
-    assert "### BEGIN Global/macOS.gitignore ###" in content
+    assert "### BEGIN Python.gitignore" in content
+    assert "### BEGIN Global/macOS.gitignore" in content

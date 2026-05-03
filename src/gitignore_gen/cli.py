@@ -48,6 +48,7 @@ Storage & caching:
 """
 
 # TODO (Out of scope):
+# - Support multiple sources in a single run (e.g., --source name=internal,...).
 # - Built-in .netrc support for private internal repositories.
 # - Optional delegation of downloads to the `gh api` CLI tool if installed.
 
@@ -126,10 +127,11 @@ class TemplateMember(ABC):
         self.path = path  # Canonical POSIX relative path
         self.source_label = source_label
         self.ref_label = ref_label
+        self.content: str | None = None
 
     @abstractmethod
-    async def read(self) -> str | None:
-        """Read the content of the template."""
+    async def load(self) -> None:
+        """Load the content of the template."""
 
 
 class TarTemplateMember(TemplateMember):
@@ -147,8 +149,8 @@ class TarTemplateMember(TemplateMember):
         self._tar = tar
         self._internal_name = internal_name
 
-    async def read(self) -> str | None:
-        return await asyncio.to_thread(self._sync_read)
+    async def load(self) -> None:
+        self.content = await asyncio.to_thread(self._sync_read)
 
     def _sync_read(self) -> str | None:
         try:
@@ -167,8 +169,8 @@ class FileTemplateMember(TemplateMember):
         super().__init__(path, source_label, ref_label)
         self._full_path = full_path
 
-    async def read(self) -> str | None:
-        return await asyncio.to_thread(self._sync_read)
+    async def load(self) -> None:
+        self.content = await asyncio.to_thread(self._sync_read)
 
     def _sync_read(self) -> str | None:
         try:
@@ -183,10 +185,10 @@ class LiteralTemplateMember(TemplateMember):
 
     def __init__(self, path: str, source_label: str, content: str):
         super().__init__(path, source_label, "literal")
-        self._content = content
+        self.content = content
 
-    async def read(self) -> str | None:
-        return self._content
+    async def load(self) -> None:
+        pass
 
 
 class TemplateSource(ABC):
@@ -232,6 +234,9 @@ class GitHubArchiveSource(TemplateSource):
 
     def _sync_get_data(self) -> bytes | None:
         base_url = getattr(self.args, "base_url", "https://codeload.github.com")
+        if base_url is None:
+            base_url = "https://codeload.github.com"
+
         slug = self.repo.replace("/", "_")
         cache_dir = cast("Path", self.args.download_location)
         cache_file = cache_dir / f"{slug}_{self.ref}.tar.gz"
@@ -280,13 +285,11 @@ class GitHubArchiveSource(TemplateSource):
         def open_tar() -> tarfile.TarFile:
             return tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
 
-        # We store the tarfile object in self._tar to keep it open for later reads.
         self._tar = await asyncio.to_thread(open_tar)
         members: list[TemplateMember] = []
         for m in self._tar.getmembers():
             if m.isfile() and m.name.endswith(".gitignore"):
                 parts = m.name.split("/")
-                # GitHub tarballs prefix path with a root dir
                 path = "/".join(parts[1:]) if len(parts) > 1 else m.name
                 members.append(
                     TarTemplateMember(
@@ -371,23 +374,23 @@ class SelectionRequest:
     """Represents a single template selection request."""
 
     def __init__(self, type_: str, pattern: str):
-        self.type = type_
+        self.type = type_.replace("include_", "")
         self.pattern = pattern
 
     def matches(self, m: TemplateMember) -> bool:
         """Check if a template member matches this request."""
         n = m.path.rsplit("/", 1)[-1]
-        if self.type == "include_path":
+        if self.type == "path":
             return m.path.endswith(self.pattern)
-        if self.type == "include_file":
+        if self.type == "file":
             return n == self.pattern
-        if self.type == "include_file_i":
+        if self.type == "file_i":
             return n.lower() == self.pattern.lower()
-        if self.type in {"include_filename", "templates"}:
+        if self.type in {"filename", "templates"}:
             if self.pattern.endswith(".gitignore"):
                 return m.path.endswith(self.pattern)
             return n == f"{self.pattern}.gitignore"
-        return bool(self.type == "include_regex" and re.search(self.pattern, m.path))
+        return bool(self.type == "regex" and re.search(self.pattern, m.path))
 
 
 class PipelineEvent:
@@ -515,22 +518,6 @@ def _create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _match_member(m: TemplateMember, type_: str, pattern: str) -> bool:
-    """Helper to match a member against a specific criteria."""
-    n = m.path.rsplit("/", 1)[-1]
-    if type_ == "include_path":
-        return m.path.endswith(pattern)
-    if type_ == "include_file":
-        return n == pattern
-    if type_ == "include_file_i":
-        return n.lower() == pattern.lower()
-    if type_ in {"include_filename", "templates"}:
-        if pattern.endswith(".gitignore"):
-            return m.path.endswith(pattern)
-        return n == f"{pattern}.gitignore"
-    return bool(type_ == "include_regex" and re.search(pattern, m.path))
-
-
 async def _handle_inclusion(
     d: str,
     v: Any,
@@ -549,11 +536,13 @@ async def _handle_inclusion(
     }
     if d in incl:
         req = SelectionRequest(d, cast("str", v))
-        m = [m for m in all_m if req.matches(m)]
-        if not m and getattr(args, "fail_on_missing", True):
+        matches = [m for m in all_m if req.matches(m)]
+        if not matches and getattr(args, "fail_on_missing", True):
             err = f"No match for {d}={v} in {src.source_label}"
             raise ValueError(err)
-        return m
+        for m in matches:
+            await m.load()
+        return matches
     if d == "include_text":
         return [LiteralTemplateMember("literal", "text", cast("str", v))]
     if d == "include_local_file":
@@ -582,15 +571,15 @@ async def _run_pipeline(args: argparse.Namespace) -> list[TemplateMember]:
         if cur_src:
             return cur_src
         if st["local_dir"]:
-            source = LocalDirSource(cast("Path", st["local_dir"]))
+            s = LocalDirSource(cast("Path", st["local_dir"]))
         elif st["local_archive"]:
-            source = LocalArchiveSource(cast("Path", st["local_archive"]))
+            s = LocalArchiveSource(cast("Path", st["local_archive"]))
         else:
-            source = GitHubArchiveSource(
+            s = GitHubArchiveSource(
                 cast("str", st["repo"]), cast("str", st["ref"]), args
             )
-        cur_src, all_m = source, await source.get_members()
-        return source
+        cur_src, all_m = s, await s.get_members()
+        return s
 
     try:
         for ev in pipeline:
@@ -637,19 +626,18 @@ async def _do_generate(args: argparse.Namespace, col: list[TemplateMember]) -> N
     f_header, s_tmpl = _get_headers(args)
     sections: list[str] = []
     for m in col:
-        content = await m.read()
-        if content:
+        if m.content:
             if getattr(args, "include_section_header", True):
                 sections.append(
                     s_tmpl.format(
                         path=m.path,
                         source=m.source_label,
                         ref=m.ref_label,
-                        content=content,
+                        content=m.content,
                     )
                 )
             else:
-                sections.append(f"{content}\n\n")
+                sections.append(f"{m.content}\n\n")
     final_output = f_header + "".join(sections)
     if args.output:
 

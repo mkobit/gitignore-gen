@@ -60,6 +60,24 @@ jobs:
       - name: Run tests
         run: uv run pytest --offline tests/
 
+  remote-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      
+      - name: Setup uv
+        uses: astral-sh/setup-uv@b5f58b2abc5763ade55e4e9d0fe52cd1ff7979ca
+        with:
+          enable-cache: true
+      
+      - name: Set up Python 3.10
+        run: uv python install 3.10
+      
+      - name: Run remote tests
+        run: uv run pytest -m remote tests/
+
   standalone-check:
     needs: lint
     runs-on: ubuntu-latest
