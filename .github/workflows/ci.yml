@@ -58,7 +58,7 @@ jobs:
           path: .test_fixtures/gitignore
       
       - name: Run tests
-        run: uv run pytest tests/
+        run: uv run pytest --offline tests/
 
   standalone-check:
     needs: lint

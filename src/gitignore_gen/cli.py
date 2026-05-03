@@ -32,14 +32,11 @@ Example usage:
   curl -sSfL $GIST_URL | python3 - generate Python macOS Windows Node \\
     --output .gitignore
 
-  # Appending to an existing file
-  curl -sSfL $GIST_URL | python3 - generate macOS >> .gitignore
-
-  # Interactive selection using fzf (highly recommended)
-  # 1. Store the script in a variable to avoid multiple downloads
-  GIST_SCRIPT=$(curl -sSfL $GIST_URL)
-  # 2. Select interactively and generate
-  python3 -c "$GIST_SCRIPT" generate $(python3 -c "$GIST_SCRIPT" ls | fzf --multi)
+  # Sequential pipeline with multiple sources and custom injections
+  curl -sSfL $GIST_URL | python3 - generate \\
+    --repo github/gitignore Python macOS \\
+    --include-text "# Local Fixes" --include-local-file .gitignore.custom \\
+    --local-dir ./templates Python
 
 Storage & caching:
   Repository archives (.tar.gz) are stored locally to avoid redundant downloads.
@@ -51,7 +48,6 @@ Storage & caching:
 """
 
 # TODO (Out of scope):
-# - Support multiple sources in a single run (e.g., --source name=internal,...).
 # - Built-in .netrc support for private internal repositories.
 # - Optional delegation of downloads to the `gh api` CLI tool if installed.
 
@@ -126,8 +122,10 @@ def _setup_logging(verbosity: int) -> None:
 class TemplateMember(ABC):
     """Abstract interface for a single template file in a source."""
 
-    def __init__(self, path: str):
-        self.path = path  # Canonical POSIX relative path (e.g. 'Python.gitignore')
+    def __init__(self, path: str, source_label: str, ref_label: str):
+        self.path = path  # Canonical POSIX relative path
+        self.source_label = source_label
+        self.ref_label = ref_label
 
     @abstractmethod
     async def read(self) -> str | None:
@@ -137,8 +135,15 @@ class TemplateMember(ABC):
 class TarTemplateMember(TemplateMember):
     """Template member stored within a tar archive."""
 
-    def __init__(self, path: str, tar: tarfile.TarFile, internal_name: str):
-        super().__init__(path)
+    def __init__(
+        self,
+        path: str,
+        source_label: str,
+        ref_label: str,
+        tar: tarfile.TarFile,
+        internal_name: str,
+    ):
+        super().__init__(path, source_label, ref_label)
         self._tar = tar
         self._internal_name = internal_name
 
@@ -158,8 +163,8 @@ class TarTemplateMember(TemplateMember):
 class FileTemplateMember(TemplateMember):
     """Template member stored as a local file."""
 
-    def __init__(self, path: str, full_path: Path):
-        super().__init__(path)
+    def __init__(self, path: str, source_label: str, ref_label: str, full_path: Path):
+        super().__init__(path, source_label, ref_label)
         self._full_path = full_path
 
     async def read(self) -> str | None:
@@ -173,6 +178,17 @@ class FileTemplateMember(TemplateMember):
         return None
 
 
+class LiteralTemplateMember(TemplateMember):
+    """Template member with literal content."""
+
+    def __init__(self, path: str, source_label: str, content: str):
+        super().__init__(path, source_label, "literal")
+        self._content = content
+
+    async def read(self) -> str | None:
+        return self._content
+
+
 class TemplateSource(ABC):
     """Abstract interface for a source of gitignore templates."""
 
@@ -183,12 +199,12 @@ class TemplateSource(ABC):
     @property
     @abstractmethod
     def source_label(self) -> str:
-        """Label for metadata headers (e.g. 'github/gitignore')."""
+        """Label for metadata headers."""
 
     @property
     @abstractmethod
     def ref_label(self) -> str:
-        """Label for metadata headers (e.g. 'main' or a local path)."""
+        """Reference for metadata headers."""
 
     async def close(self) -> None:  # noqa: B027
         """Release resources associated with this source."""
@@ -215,11 +231,7 @@ class GitHubArchiveSource(TemplateSource):
         return await asyncio.to_thread(self._sync_get_data)
 
     def _sync_get_data(self) -> bytes | None:
-        base_url = (
-            cast("str", self.args.base_url).rstrip("/")
-            if getattr(self.args, "base_url", None)
-            else "https://codeload.github.com"
-        )
+        base_url = getattr(self.args, "base_url", "https://codeload.github.com")
         slug = self.repo.replace("/", "_")
         cache_dir = cast("Path", self.args.download_location)
         cache_file = cache_dir / f"{slug}_{self.ref}.tar.gz"
@@ -237,7 +249,7 @@ class GitHubArchiveSource(TemplateSource):
                 except Exception:
                     logger.warning("Failed to read cache file")
 
-        url = f"{base_url}/{self.repo}/tar.gz/{self.ref}"
+        url = f"{base_url.rstrip('/')}/{self.repo}/tar.gz/{self.ref}"
         logger.info("Downloading archive for %s @ %s", self.repo, self.ref)
 
         try:
@@ -268,15 +280,18 @@ class GitHubArchiveSource(TemplateSource):
         def open_tar() -> tarfile.TarFile:
             return tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
 
-        # We store the tarfile object in self._tar to keep it open for later reads.
         self._tar = await asyncio.to_thread(open_tar)
         members: list[TemplateMember] = []
         for m in self._tar.getmembers():
             if m.isfile() and m.name.endswith(".gitignore"):
-                # GitHub tarballs prefix every path with a root dir
                 parts = m.name.split("/")
-                canonical_path = "/".join(parts[1:]) if len(parts) > 1 else m.name
-                members.append(TarTemplateMember(canonical_path, self._tar, m.name))
+                # GitHub tarballs prefix path with a root dir
+                path = "/".join(parts[1:]) if len(parts) > 1 else m.name
+                members.append(
+                    TarTemplateMember(
+                        path, self.source_label, self.ref_label, self._tar, m.name
+                    )
+                )
         return members
 
     async def close(self) -> None:
@@ -307,7 +322,9 @@ class LocalArchiveSource(TemplateSource):
 
             self._tar = await asyncio.to_thread(open_tar)
             return [
-                TarTemplateMember(m.name, self._tar, m.name)
+                TarTemplateMember(
+                    m.name, self.source_label, self.ref_label, self._tar, m.name
+                )
                 for m in self._tar.getmembers()
                 if m.isfile() and m.name.endswith(".gitignore")
             ]
@@ -343,35 +360,23 @@ class LocalDirSource(TemplateSource):
             if p.is_file():
                 # Use .as_posix() to ensure canonical '/' delimiters on Windows
                 rel_path = p.relative_to(self.path).as_posix()
-                members.append(FileTemplateMember(rel_path, p))
+                members.append(
+                    FileTemplateMember(rel_path, self.source_label, self.ref_label, p)
+                )
         return members
 
 
-class SelectionRequest:
-    """Represents a single template selection request."""
+class PipelineEvent:
+    """Represents an event in the CLI pipeline."""
 
-    def __init__(self, type_: str, pattern: str):
-        self.type = type_
-        self.pattern = pattern
-
-    def matches(self, m: TemplateMember) -> bool:
-        """Check if a template member matches this request."""
-        name = m.path.rsplit("/", 1)[-1]
-        if self.type == "path":
-            return m.path.endswith(self.pattern)
-        if self.type == "file":
-            return name == self.pattern
-        if self.type == "file_i":
-            return name.lower() == self.pattern.lower()
-        if self.type == "filename":
-            if self.pattern.endswith(".gitignore"):
-                return m.path.endswith(self.pattern)
-            return name == f"{self.pattern}.gitignore"
-        return bool(self.type == "regex" and re.search(self.pattern, m.path))
+    def __init__(self, dest: str, value: Any, option_string: str | None = None):
+        self.dest = dest
+        self.value = value
+        self.option_string = option_string
 
 
-class StoreSelectionAction(argparse.Action):
-    """Custom argparse action to store selection requests in order."""
+class PipelineAction(argparse.Action):
+    """Custom argparse action to store events in order."""
 
     def __call__(
         self,
@@ -381,302 +386,250 @@ class StoreSelectionAction(argparse.Action):
         option_string: str | None = None,
     ) -> None:
         _ = parser
-        selections = getattr(namespace, "selections", None)
-        if selections is None:
-            selections = []
-            namespace.selections = selections
+        pipeline = getattr(namespace, "pipeline", None)
+        if pipeline is None:
+            pipeline = []
+            namespace.pipeline = pipeline
 
-        # selections is now known to be a list
-        selections_list = cast("list[SelectionRequest]", selections)
-
-        mapping = {
-            "--include-path": "path",
-            "--include-file": "file",
-            "--include-file-i": "file_i",
-            "--include-filename": "filename",
-            "--include-regex": "regex",
-            None: "filename",
-        }
-        type_ = mapping.get(option_string, "filename")
-        if isinstance(values, list):
+        pipeline_list = cast("list[PipelineEvent]", pipeline)
+        if isinstance(values, (list, tuple)):
             for val in values:
-                if isinstance(val, str):
-                    selections_list.append(SelectionRequest(type_, val))
-        elif isinstance(values, str):
-            selections_list.append(SelectionRequest(type_, values))
-
-
-def _select_templates(
-    members: list[TemplateMember], args: argparse.Namespace
-) -> list[TemplateMember]:
-    """Select members based on user criteria, preserving order."""
-    selections = cast("list[SelectionRequest]", getattr(args, "selections", []))
-    selected: list[TemplateMember] = []
-
-    for req in selections:
-        matches = [m for m in members if req.matches(m)]
-        if not matches and getattr(args, "fail_on_missing", True):
-            msg = f"No templates matched selection: {req.type}={req.pattern}"
-            raise ValueError(msg)
-        selected.extend(matches)
-
-    seen: set[str] = set()
-    unique_selected: list[TemplateMember] = []
-    for m in selected:
-        if m.path not in seen:
-            unique_selected.append(m)
-            seen.add(m.path)
-    return unique_selected
+                pipeline_list.append(PipelineEvent(self.dest, val, option_string))
+        else:
+            pipeline_list.append(PipelineEvent(self.dest, values, option_string))
 
 
 def _add_selection_group(parser: argparse.ArgumentParser) -> None:
     """Add template selection arguments to a parser."""
-    selection = parser.add_argument_group(
-        "Selection options",
-        description="Filter which .gitignore templates to include in the output.",
-    )
+    selection = parser.add_argument_group("Selection options")
+    selection.add_argument("--include-path", action=PipelineAction, metavar="PATH")
+    selection.add_argument("--include-file", action=PipelineAction, metavar="FILENAME")
     selection.add_argument(
-        "--include-path",
-        action=StoreSelectionAction,
-        metavar="PATH",
-        help=(
-            "Include a file by its exact relative path (e.g. 'Global/macOS.gitignore')."
-        ),
+        "--include-file-i", action=PipelineAction, metavar="FILENAME"
     )
+    selection.add_argument("--include-filename", action=PipelineAction, metavar="NAME")
+    selection.add_argument("--include-regex", action=PipelineAction, metavar="PATTERN")
+    selection.add_argument("--include-text", action=PipelineAction, metavar="TEXT")
     selection.add_argument(
-        "--include-file",
-        action=StoreSelectionAction,
-        metavar="FILENAME",
-        help="Include a file by its exact filename (e.g. 'Python.gitignore').",
+        "--include-local-file", action=PipelineAction, metavar="PATH", type=Path
     )
+    selection.add_argument("--fail-on-missing", action="store_true", default=True)
     selection.add_argument(
-        "--include-file-i",
-        action=StoreSelectionAction,
-        metavar="FILENAME",
-        help=(
-            "Include a file by its filename, case-insensitive "
-            "(e.g. 'python.gitignore')."
-        ),
-    )
-    selection.add_argument(
-        "--include-filename",
-        action=StoreSelectionAction,
-        metavar="NAME",
-        help="Include a file by its base name; automatically appends '.gitignore'.",
-    )
-    selection.add_argument(
-        "--include-regex",
-        action=StoreSelectionAction,
-        metavar="PATTERN",
-        help="Include files whose repository path matches the provided regex.",
-    )
-    selection.add_argument(
-        "--fail-on-missing",
-        action="store_true",
-        default=True,
-        help="Exit if any requested template is not found (default).",
-    )
-    selection.add_argument(
-        "--no-fail-on-missing",
-        action="store_false",
-        dest="fail_on_missing",
-        help="Continue even if some requested templates are missing.",
+        "--no-fail-on-missing", action="store_false", dest="fail_on_missing"
     )
 
 
 def _create_parser() -> argparse.ArgumentParser:
     """Define the command line interface with subcommands."""
     parser = argparse.ArgumentParser(
-        description=(
-            "A zero-dependency tool to compose .gitignore files from templates."
-        ),
+        description="Generator to compose .gitignore templates."
     )
-
     common = argparse.ArgumentParser(add_help=False)
-    source = common.add_argument_group(
-        "Repository source",
-        description="Configure which repository and reference to fetch templates from.",
-    )
-    source.add_argument(
-        "--repo",
-        default=_DEFAULT_REPO,
-        help=(
-            "The GitHub repository (default: %(default)s). "
-            "Automatically uses GITHUB_TOKEN."
-        ),
-    )
-    source.add_argument(
-        "--no-auth",
-        action="store_true",
-        help="Disable automatic use of GITHUB_TOKEN.",
-    )
-    source.add_argument(
-        "--base-url",
-        metavar="URL",
-        help="Override the base URL (default: https://codeload.github.com).",
-    )
-    ref_group = source.add_mutually_exclusive_group()
-    ref_group.add_argument(
-        "--branch",
-        default="main",
-        help="The git branch (default: %(default)s).",
-    )
-    ref_group.add_argument("--tag", metavar="TAG", help="The git tag.")
-    ref_group.add_argument("--sha", metavar="HASH", help="The git commit SHA.")
+
+    source = common.add_argument_group("Repository source")
+    source.add_argument("--repo", action=PipelineAction, default=_DEFAULT_REPO)
+    source.add_argument("--no-auth", action="store_true")
+    source.add_argument("--base-url", action=PipelineAction, metavar="URL")
+    source.add_argument("--branch", action=PipelineAction, default="main")
+    source.add_argument("--tag", action=PipelineAction, metavar="TAG")
+    source.add_argument("--sha", action=PipelineAction, metavar="HASH")
 
     local = common.add_argument_group(
         "Local sources",
-        description="Use templates from a local directory or archive.",
+        description=(
+            "Use templates from a local directory or archive instead of the network."
+        ),
     )
+    local.add_argument("--local-dir", action=PipelineAction, type=Path, metavar="PATH")
     local.add_argument(
-        "--local-dir",
-        type=Path,
-        metavar="PATH",
-        help="Path to a local directory.",
-    )
-    local.add_argument(
-        "--local-archive",
-        type=Path,
-        metavar="PATH",
-        help="Path to a local .tar.gz archive.",
+        "--local-archive", action=PipelineAction, type=Path, metavar="PATH"
     )
 
     storage = common.add_argument_group("Storage and logging")
     storage.add_argument(
-        "--download-location",
-        type=Path,
-        default=_get_default_cache(),
-        metavar="DIR",
-        help=(
-            "Cache directory for archives (default: %(default)s). "
-            "Archives are not automatically deleted."
-        ),
+        "--download-location", type=Path, default=_get_default_cache(), metavar="DIR"
     )
-    storage.add_argument(
-        "--log-level",
-        type=int,
-        choices=[0, 1, 2],
-        default=1,
-        help="Log verbosity: 0 (errors), 1 (info), 2 (debug).",
-    )
-    storage.add_argument(
-        "--refresh-period",
-        metavar="DURATION",
-        default="7d",
-        help="How long to keep the local cache (e.g. '7d', '12h').",
-    )
+    storage.add_argument("--log-level", type=int, choices=[0, 1, 2], default=1)
+    storage.add_argument("--refresh-period", metavar="DURATION", default="7d")
 
-    subparsers = parser.add_subparsers(
-        dest="command", required=True, title="Commands", metavar="{ls,generate}"
-    )
+    subparsers = parser.add_subparsers(dest="command", required=True, title="Commands")
 
-    ls_parser = subparsers.add_parser(
-        "ls", help="List available templates.", parents=[common]
-    )
+    ls_parser = subparsers.add_parser("ls", help="List templates.", parents=[common])
     ls_parser.add_argument(
-        "templates",
-        nargs="*",
-        action=StoreSelectionAction,
-        metavar="TEMPLATE",
-        help="Template names to filter by.",
+        "templates", nargs="*", action=PipelineAction, metavar="TEMPLATE"
     )
     _add_selection_group(ls_parser)
 
     gen_parser = subparsers.add_parser(
-        "generate", help="Generate a combined .gitignore file.", parents=[common]
+        "generate", help="Generate .gitignore.", parents=[common]
     )
     gen_parser.add_argument(
-        "templates",
-        nargs="*",
-        action=StoreSelectionAction,
-        metavar="TEMPLATE",
-        help="Template names to include.",
+        "templates", nargs="*", action=PipelineAction, metavar="TEMPLATE"
     )
     _add_selection_group(gen_parser)
 
     output = gen_parser.add_argument_group("Output options")
-    output.add_argument("--output", metavar="FILE", help="Save output to a file.")
+    output.add_argument("--output", metavar="FILE")
     output.add_argument(
-        "--section-order",
-        choices=["lexicographic", "args_order"],
-        default="args_order",
-        help="Sort order: 'args_order' or 'lexicographic'.",
+        "--section-order", choices=["lexicographic", "args_order"], default="args_order"
     )
-    f_header = output.add_mutually_exclusive_group()
-    f_header.add_argument("--include-file-header", action="store_true", default=True)
-    f_header.add_argument(
+    output.add_argument("--include-file-header", action="store_true", default=True)
+    output.add_argument(
         "--no-include-file-header", action="store_false", dest="include_file_header"
     )
+    output.add_argument("--file-header-template", action=PipelineAction, metavar="STR")
+    output.add_argument("--include-section-header", action="store_true", default=True)
     output.add_argument(
-        "--file-header-template",
-        metavar="STR",
-        default=(
-            "\n# Generated by gitignore-gen\n# Source: {repo}@{ref}\n# Date: {date}\n\n"
-        ),
-    )
-    s_header = output.add_mutually_exclusive_group()
-    s_header.add_argument("--include-section-header", action="store_true", default=True)
-    s_header.add_argument(
         "--no-include-section-header",
         action="store_false",
         dest="include_section_header",
     )
     output.add_argument(
-        "--section-header-template",
-        metavar="STR",
-        default="### BEGIN {path} ###\n{content}\n### END {path} ###\n\n",
+        "--section-header-template", action=PipelineAction, metavar="STR"
     )
 
     return parser
 
 
-async def _do_list(source: TemplateSource, args: argparse.Namespace) -> None:
-    """Handle the 'ls' subcommand."""
-    members = await source.get_members()
-    if hasattr(args, "selections") and args.selections:
-        members = _select_templates(members, args)
-    for m in sorted(members, key=lambda x: x.path):
-        sys.stdout.write(m.path + "\n")
+def _match_member(m: TemplateMember, type_: str, pattern: str) -> bool:
+    """Helper to match a member against a specific criteria."""
+    n = m.path.rsplit("/", 1)[-1]
+    if type_ == "include_path":
+        return m.path.endswith(pattern)
+    if type_ == "include_file":
+        return n == pattern
+    if type_ == "include_file_i":
+        return n.lower() == pattern.lower()
+    if type_ in {"include_filename", "templates"}:
+        if pattern.endswith(".gitignore"):
+            return m.path.endswith(pattern)
+        return n == f"{pattern}.gitignore"
+    return bool(type_ == "include_regex" and re.search(pattern, m.path))
 
 
-async def _do_generate(source: TemplateSource, args: argparse.Namespace) -> None:
-    """Handle the 'generate' subcommand."""
-    members = await source.get_members()
-    selected = _select_templates(members, args)
-    if getattr(args, "section_order", "args_order") == "lexicographic":
-        selected.sort(key=lambda x: x.path)
+async def _handle_inclusion(
+    d: str,
+    v: Any,
+    src: TemplateSource,
+    all_m: list[TemplateMember],
+    args: argparse.Namespace,
+) -> list[TemplateMember]:
+    """Execute a single inclusion request."""
+    incl = {
+        "templates",
+        "include_path",
+        "include_file",
+        "include_file_i",
+        "include_filename",
+        "include_regex",
+    }
+    if d in incl:
+        m = [m for m in all_m if _match_member(m, d, cast("str", v))]
+        if not m and getattr(args, "fail_on_missing", True):
+            err = f"No match for {d}={v} in {src.source_label}"
+            raise ValueError(err)
+        return m
+    if d == "include_text":
+        return [LiteralTemplateMember("literal", "text", cast("str", v))]
+    if d == "include_local_file":
+        p = cast("Path", v)
+        txt = await asyncio.to_thread(p.read_text, encoding="utf-8")
+        return [LiteralTemplateMember(str(p), "local-file", txt.strip())]
+    return []
 
-    if not selected:
-        logger.warning("No templates matched the provided criteria.")
-        return
 
-    template = cast("str", args.file_header_template)
-    file_header = (
-        template.format(
-            repo=source.source_label,
-            ref=source.ref_label,
-            date=datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-        )
-        if getattr(args, "include_file_header", True)
-        else ""
+async def _run_pipeline(args: argparse.Namespace) -> list[TemplateMember]:
+    """Execute the pipeline of events to collect templates."""
+    pipeline = cast("list[PipelineEvent]", getattr(args, "pipeline", []))
+    st = {
+        "repo": _DEFAULT_REPO,
+        "ref": "main",
+        "base_url": "https://codeload.github.com",
+        "local_dir": None,
+        "local_archive": None,
+    }
+    cur_src: TemplateSource | None = None
+    all_m: list[TemplateMember] = []
+    col: list[TemplateMember] = []
+
+    async def get_src() -> TemplateSource:
+        nonlocal cur_src, all_m
+        if cur_src:
+            return cur_src
+        if st["local_dir"]:
+            source = LocalDirSource(cast("Path", st["local_dir"]))
+        elif st["local_archive"]:
+            source = LocalArchiveSource(cast("Path", st["local_archive"]))
+        else:
+            source = GitHubArchiveSource(
+                cast("str", st["repo"]), cast("str", st["ref"]), args
+            )
+        cur_src, all_m = source, await source.get_members()
+        return source
+
+    try:
+        for ev in pipeline:
+            d, v = ev.dest, ev.value
+            if d in {
+                "repo",
+                "branch",
+                "tag",
+                "sha",
+                "base_url",
+                "local_dir",
+                "local_archive",
+            }:
+                st["ref" if d in {"branch", "tag", "sha"} else d], cur_src = v, None
+            else:
+                src = await get_src()
+                col.extend(await _handle_inclusion(d, v, src, all_m, args))
+        return col
+    finally:
+        if cur_src:
+            await cur_src.close()
+
+
+def _get_headers(args: argparse.Namespace) -> tuple[str, str]:
+    """Resolve formatting templates for the final output."""
+    f_tmpl = getattr(args, "file_header_template", None) or (
+        "\n# Generated by gitignore-gen\n# Date: {date}\n\n"
     )
+    s_tmpl = getattr(args, "section_header_template", None) or (
+        "### BEGIN {path} (Source: {source}@{ref}) ###\n{content}\n"
+        "### END {path} ###\n\n"
+    )
+    now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    f_header = (
+        f_tmpl.format(date=now) if getattr(args, "include_file_header", True) else ""
+    )
+    return f_header, s_tmpl
 
+
+async def _do_generate(args: argparse.Namespace, col: list[TemplateMember]) -> None:
+    """Handle formatting and output for the generate command."""
+    if args.section_order == "lexicographic":
+        col.sort(key=lambda x: x.path)
+    f_header, s_tmpl = _get_headers(args)
     sections: list[str] = []
-    for m in selected:
+    for m in col:
         content = await m.read()
         if content:
             if getattr(args, "include_section_header", True):
-                sec_tmpl = cast("str", args.section_header_template)
-                sections.append(sec_tmpl.format(path=m.path, content=content))
+                sections.append(
+                    s_tmpl.format(
+                        path=m.path,
+                        source=m.source_label,
+                        ref=m.ref_label,
+                        content=content,
+                    )
+                )
             else:
                 sections.append(f"{content}\n\n")
+    final_output = f_header + "".join(sections)
+    if args.output:
 
-    final_output = file_header + "".join(sections)
-    if getattr(args, "output", None):
-        output_path = Path(cast("str", args.output))
-
-        def write_file() -> None:
-            output_path.write_text(final_output, encoding="utf-8")
+        def write_file():
+            Path(args.output).write_text(final_output, encoding="utf-8")
 
         await asyncio.to_thread(write_file)
         logger.info("Successfully wrote output to %s", args.output)
@@ -685,48 +638,35 @@ async def _do_generate(source: TemplateSource, args: argparse.Namespace) -> None
 
 
 async def async_main(argv: list[str] | None = None) -> None:
-    """Main entry point for the async execution."""
+    """Main entry point."""
     parser = _create_parser()
     args = parser.parse_args(argv)
     _setup_logging(cast("int", getattr(args, "log_level", 1)))
-
     try:
-        source: TemplateSource
-        local_dir = cast("Path | None", getattr(args, "local_dir", None))
-        local_archive = cast("Path | None", getattr(args, "local_archive", None))
 
-        if local_dir:
-            source = LocalDirSource(local_dir)
-        elif local_archive:
-            source = LocalArchiveSource(local_archive)
-        else:
-            ref = cast(
-                "str",
-                getattr(args, "sha", None)
-                or getattr(args, "tag", None)
-                or getattr(args, "branch", "main"),
-            )
-            repo = cast("str", getattr(args, "repo", _DEFAULT_REPO))
-            source = GitHubArchiveSource(repo, ref, args)
+        async def run_pipeline_and_output():
+            col = await _run_pipeline(args)
+            if args.command == "ls":
+                for m in sorted(col, key=lambda x: x.path):
+                    sys.stdout.write(
+                        f"{m.path} (Source: {m.source_label}@{m.ref_label})\n"
+                    )
+                return
+            if not col:
+                if not getattr(args, "pipeline", None):
+                    parser.print_help()
+                else:
+                    logger.warning("No templates were collected.")
+                return
+            await _do_generate(args, col)
 
-        async def run() -> None:
-            try:
-                if args.command == "ls":
-                    await _do_list(source, args)
-                elif args.command == "generate":
-                    await _do_generate(source, args)
-            finally:
-                await source.close()
-
-        await asyncio.wait_for(run(), timeout=300)
-
+        await asyncio.wait_for(run_pipeline_and_output(), timeout=300)
     except Exception:
         logger.exception("Runtime error")
         sys.exit(1)
 
 
 def main() -> None:
-    """Synchronous wrapper for the async main entry point."""
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:

@@ -9,12 +9,33 @@ TEMPLATE_SHA = "1046d8fba6b42d367da6314c934cddb6bfe5662e"
 TEMPLATE_URL = f"https://codeload.github.com/github/gitignore/tar.gz/{TEMPLATE_SHA}"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add CLI options to pytest."""
+    parser.addoption(
+        "--download-templates",
+        action="store_true",
+        default=False,
+        help="Force download of gitignore templates even if they exist locally.",
+    )
+    parser.addoption(
+        "--offline",
+        action="store_true",
+        default=False,
+        help="Fail if templates are missing instead of downloading them.",
+    )
+
+
 @pytest.fixture(scope="session")
 def templates_dir(pytestconfig: pytest.Config) -> Path:
     """Fixture to provide a local directory of gitignore templates."""
     fixture_dir = pytestconfig.rootpath / ".test_fixtures" / "gitignore"
+    force_download = pytestconfig.getoption("--download-templates")
+    offline = pytestconfig.getoption("--offline")
 
-    if not fixture_dir.exists():
+    if force_download or not fixture_dir.exists():
+        if offline:
+            pytest.fail(f"Templates missing in {fixture_dir} and --offline is set.")
+
         fixture_dir.mkdir(parents=True, exist_ok=True)
         tar_path = fixture_dir.parent / "templates.tar.gz"
 
