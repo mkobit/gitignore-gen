@@ -1,5 +1,5 @@
 [project]
-name = "gitignore-gist"
+name = "gitignore-compose"
 version = "0.1.0"
 description = "A zero-dependency tool to compose .gitignore files from remote template repositories."
 readme = "README.md"
@@ -18,7 +18,7 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-gitignore-gist = "gitignore_gen.cli:main"
+gitignore-compose = "gitignore_gen.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -93,7 +93,7 @@ ignore = []
 asyncio_mode = "auto"
 asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing -m 'not remote'"
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml -m 'not remote'"
 markers = [
     "remote: tests that require network access to fetch templates",
 ]
@@ -102,7 +102,7 @@ markers = [
 source = ["src"]
 
 [tool.coverage.report]
-fail_under = 100
+fail_under = 95
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.10"
 
 [options]
-exclude-newer = "2026-04-26T07:43:07.949449585Z"
+exclude-newer = "2026-04-26T07:48:01.542102446Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -335,7 +335,7 @@ wheels = [
 ]
 
 [[package]]
-name = "gitignore-gist"
+name = "gitignore-compose"
 version = "0.1.0"
 source = { editable = "." }
 

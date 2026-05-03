@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Jules environment setup for gitignore-gist repository
+# Jules environment setup for gitignore-compose repository
 # Docs: https://jules.google/docs/environment/
 
 set -euo pipefail
 
-echo "Setting up gitignore-gist environment..."
+echo "Setting up gitignore-compose environment..."
 
 # Diagnostic Info
 echo "--- Diagnostic Information ---"

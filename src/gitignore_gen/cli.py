@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Usage (ephemeral):
-#   GIST_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
-#   curl -sSfL $GIST_URL | python3 - generate Python
+#   SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
+#   curl -sSfL $SCRIPT_URL | python3 - generate Python
 #
 # Development commands:
 #   uv run ruff check .
@@ -19,21 +19,21 @@ Source:  https://github.com/github/gitignore
 Mirrors: https://codeload.github.com (default)
 
 Example usage:
-  # Define the gist URL for convenience
-  GIST_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
+  # Define the script URL for convenience
+  SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
 
   # List all available templates
-  curl -sSfL $GIST_URL | python3 - ls
+  curl -sSfL $SCRIPT_URL | python3 - ls
 
   # List templates matching a regex
-  curl -sSfL $GIST_URL | python3 - ls --include-regex '.*Python.*'
+  curl -sSfL $SCRIPT_URL | python3 - ls --include-regex '.*Python.*'
 
   # Generate a combined file for a typical cross-platform project
-  curl -sSfL $GIST_URL | python3 - generate Python macOS Windows Node \\
+  curl -sSfL $SCRIPT_URL | python3 - generate Python macOS Windows Node \\
     --output .gitignore
 
   # Sequential pipeline with multiple sources and custom injections
-  curl -sSfL $GIST_URL | python3 - generate \\
+  curl -sSfL $SCRIPT_URL | python3 - generate \\
     --repo github/gitignore Python macOS \\
     --include-text "# Local Fixes" --include-local-file .gitignore.custom \\
     --local-dir ./templates Python
@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_REPO = "github/gitignore"
 
-logger = logging.getLogger("gitignore-gist")
+logger = logging.getLogger("gitignore-compose")
 
 
 def _get_default_cache() -> Path:
