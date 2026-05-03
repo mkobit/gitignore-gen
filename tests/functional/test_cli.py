@@ -8,9 +8,7 @@ from gitignore_gen.cli import async_main
 @pytest.mark.asyncio
 async def test_cli_ls(templates_dir: Path):
     """Test the 'ls' subcommand using a local directory."""
-    # We pass --local-dir to avoid network requests
     await async_main(["ls", "--local-dir", str(templates_dir), "Python"])
-    # If it doesn't crash and completes, the basic wiring is working
 
 
 @pytest.mark.asyncio
@@ -28,7 +26,6 @@ async def test_cli_generate_to_stdout(
         ]
     )
     captured = capsys.readouterr()
-    # The header now includes source info
     assert "### BEGIN Python.gitignore" in captured.out
     assert "Source: local-dir" in captured.out
     assert "### END Python.gitignore ###" in captured.out
@@ -54,3 +51,82 @@ async def test_cli_generate_to_file(templates_dir: Path, tmp_path: Path):
     content = output_file.read_text()
     assert "### BEGIN Python.gitignore" in content
     assert "### BEGIN Global/macOS.gitignore" in content
+
+
+@pytest.mark.asyncio
+async def test_cli_include_text(
+    templates_dir: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test including literal text."""
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "--include-text",
+            "# Custom Header",
+            "Python",
+            "--no-include-file-header",
+            "--no-include-section-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "# Custom Header" in captured.out
+    assert "marimo" in captured.out  # Part of Python.gitignore in fixtures
+
+
+@pytest.mark.asyncio
+async def test_cli_include_local_file(
+    templates_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test including a local file."""
+    custom_file = tmp_path / "custom.gitignore"
+    custom_file.write_text("*.log", encoding="utf-8")
+
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "--include-local-file",
+            str(custom_file),
+            "--no-include-file-header",
+            "--no-include-section-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "*.log" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_fail_on_missing(templates_dir: Path):
+    """Test failure when a template is missing."""
+    with pytest.raises(SystemExit):
+        await async_main(
+            [
+                "generate",
+                "--local-dir",
+                str(templates_dir),
+                "NonExistentTemplate",
+            ]
+        )
+
+
+@pytest.mark.asyncio
+async def test_cli_no_fail_on_missing(
+    templates_dir: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Test --no-fail-on-missing."""
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "--no-fail-on-missing",
+            "NonExistentTemplate",
+            "Python",
+            "--no-include-file-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "Python.gitignore" in captured.out

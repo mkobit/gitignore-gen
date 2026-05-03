@@ -380,16 +380,23 @@ class SelectionRequest:
     def matches(self, m: TemplateMember) -> bool:
         """Check if a template member matches this request."""
         n = m.path.rsplit("/", 1)[-1]
+
+        # Helper to check match with optional .gitignore suffix
+        def name_match(target: str, query: str, case_sensitive: bool = True) -> bool:
+            if not case_sensitive:
+                target, query = target.lower(), query.lower()
+            if query.endswith(".gitignore"):
+                return target == query
+            return target in (f"{query}.gitignore", query)
+
         if self.type == "path":
             return m.path.endswith(self.pattern)
         if self.type == "file":
-            return n == self.pattern
+            return name_match(n, self.pattern)
         if self.type == "file_i":
-            return n.lower() == self.pattern.lower()
+            return name_match(n, self.pattern, case_sensitive=False)
         if self.type in {"filename", "templates"}:
-            if self.pattern.endswith(".gitignore"):
-                return m.path.endswith(self.pattern)
-            return n == f"{self.pattern}.gitignore"
+            return name_match(n, self.pattern)
         return bool(self.type == "regex" and re.search(self.pattern, m.path))
 
 
