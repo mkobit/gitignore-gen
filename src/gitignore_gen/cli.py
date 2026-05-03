@@ -280,6 +280,7 @@ class GitHubArchiveSource(TemplateSource):
         def open_tar() -> tarfile.TarFile:
             return tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
 
+        # We store the tarfile object in self._tar to keep it open for later reads.
         self._tar = await asyncio.to_thread(open_tar)
         members: list[TemplateMember] = []
         for m in self._tar.getmembers():
@@ -364,6 +365,29 @@ class LocalDirSource(TemplateSource):
                     FileTemplateMember(rel_path, self.source_label, self.ref_label, p)
                 )
         return members
+
+
+class SelectionRequest:
+    """Represents a single template selection request."""
+
+    def __init__(self, type_: str, pattern: str):
+        self.type = type_
+        self.pattern = pattern
+
+    def matches(self, m: TemplateMember) -> bool:
+        """Check if a template member matches this request."""
+        n = m.path.rsplit("/", 1)[-1]
+        if self.type == "include_path":
+            return m.path.endswith(self.pattern)
+        if self.type == "include_file":
+            return n == self.pattern
+        if self.type == "include_file_i":
+            return n.lower() == self.pattern.lower()
+        if self.type in {"include_filename", "templates"}:
+            if self.pattern.endswith(".gitignore"):
+                return m.path.endswith(self.pattern)
+            return n == f"{self.pattern}.gitignore"
+        return bool(self.type == "include_regex" and re.search(self.pattern, m.path))
 
 
 class PipelineEvent:
@@ -524,7 +548,8 @@ async def _handle_inclusion(
         "include_regex",
     }
     if d in incl:
-        m = [m for m in all_m if _match_member(m, d, cast("str", v))]
+        req = SelectionRequest(d, cast("str", v))
+        m = [m for m in all_m if req.matches(m)]
         if not m and getattr(args, "fail_on_missing", True):
             err = f"No match for {d}={v} in {src.source_label}"
             raise ValueError(err)
