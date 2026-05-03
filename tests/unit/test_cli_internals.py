@@ -4,9 +4,35 @@ from unittest.mock import patch
 
 import pytest
 
-from gitignore_gen.cli import _get_default_cache, _parse_duration, async_main, main
+from gitignore_gen.cli import (
+    Color,
+    _get_default_cache,
+    _parse_duration,
+    async_main,
+    main,
+)
 
 EXIT_CODE_KBD_INT = 130
+
+
+def test_color_logic():
+    """Test Color class."""
+    with (
+        patch("sys.stdout.isatty", return_value=True),
+        patch.dict(os.environ, {}, clear=True),
+    ):
+        assert Color.enabled()
+        assert "\033" in Color.wrap("test", Color.CYAN)
+
+    with patch("sys.stdout.isatty", return_value=False):
+        assert not Color.enabled()
+        assert Color.wrap("test", Color.CYAN) == "test"
+
+    with (
+        patch("sys.stdout.isatty", return_value=True),
+        patch.dict(os.environ, {"NO_COLOR": "1"}),
+    ):
+        assert not Color.enabled()
 
 
 def test_get_default_cache_xdg(tmp_path):

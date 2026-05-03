@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_REPO = "github/gitignore"
 
-logger = logging.getLogger("gitignore-gen")
+logger = logging.getLogger("gitignore-gist")
 
 
 def _get_default_cache() -> Path:
@@ -118,6 +118,29 @@ def _setup_logging(verbosity: int) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
         stream=sys.stderr,
     )
+
+
+class Color:
+    """ANSI color codes for terminal output."""
+
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+    @classmethod
+    def enabled(cls) -> bool:
+        """Check if colors should be enabled."""
+        return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+    @classmethod
+    def wrap(cls, text: str, color: str) -> str:
+        """Wrap text in ANSI color codes if enabled."""
+        if cls.enabled():
+            return f"{color}{text}{cls.RESET}"
+        return text
 
 
 class TemplateMember(ABC):
@@ -496,6 +519,11 @@ def _create_parser() -> argparse.ArgumentParser:
     )
     _add_selection_group(ls_parser)
 
+    search_parser = subparsers.add_parser(
+        "search", help="Search for templates.", parents=[common]
+    )
+    _add_selection_group(search_parser)
+
     gen_parser = subparsers.add_parser(
         "generate", help="Generate .gitignore.", parents=[common]
     )
@@ -508,6 +536,9 @@ def _create_parser() -> argparse.ArgumentParser:
     output.add_argument("--output", metavar="FILE")
     output.add_argument(
         "--section-order", choices=["lexicographic", "args_order"], default="args_order"
+    )
+    output.add_argument(
+        "--dry-run", action="store_true", help="Show selected templates."
     )
     output.add_argument("--include-file-header", action="store_true", default=True)
     output.add_argument(
@@ -547,14 +578,19 @@ async def _handle_inclusion(
         if not matches and getattr(args, "fail_on_missing", True):
             err = f"No match for {d}={v} in {src.source_label}"
             raise ValueError(err)
-        for m in matches:
-            await m.load()
+        if not getattr(args, "dry_run", False):
+            for m in matches:
+                await m.load()
         return matches
     if d == "include_text":
         return [LiteralTemplateMember("literal", "text", cast("str", v))]
     if d == "include_local_file":
         p = cast("Path", v)
-        txt = await asyncio.to_thread(p.read_text, encoding="utf-8")
+        txt = (
+            f"# Content of {p}"
+            if getattr(args, "dry_run", False)
+            else await asyncio.to_thread(p.read_text, encoding="utf-8")
+        )
         return [LiteralTemplateMember(str(p), "local-file", txt.strip())]
     return []
 
@@ -604,6 +640,9 @@ async def _run_pipeline(args: argparse.Namespace) -> list[TemplateMember]:
             else:
                 src = await get_src()
                 col.extend(await _handle_inclusion(d, v, src, all_m, args))
+        if args.command == "search":
+            src = await get_src()
+            col = all_m
         return col
     finally:
         if cur_src:
@@ -628,6 +667,17 @@ def _get_headers(args: argparse.Namespace) -> tuple[str, str]:
 
 async def _do_generate(args: argparse.Namespace, col: list[TemplateMember]) -> None:
     """Handle formatting and output for the generate command."""
+    if getattr(args, "dry_run", False):
+        sys.stdout.write(
+            Color.wrap(f"\n📦 Dry run: {len(col)} templates selected\n", Color.BOLD)
+        )
+        for m in col:
+            sys.stdout.write(
+                f"  {Color.wrap('+', Color.GREEN)} {m.path} "
+                f"({Color.wrap(m.source_label, Color.CYAN)}@{m.ref_label})\n"
+            )
+        return
+
     if args.section_order == "lexicographic":
         col.sort(key=lambda x: x.path)
     f_header, s_tmpl = _get_headers(args)
@@ -671,6 +721,23 @@ async def async_main(argv: list[str] | None = None) -> None:
                     sys.stdout.write(
                         f"{m.path} (Source: {m.source_label}@{m.ref_label})\n"
                     )
+                return
+            if args.command == "search":
+                # Find the first regex in pipeline or default
+                pattern = ".*"
+                pipeline = cast("list[PipelineEvent]", getattr(args, "pipeline", []))
+                for ev in pipeline:
+                    if ev.dest == "include_regex":
+                        pattern = cast("str", ev.value)
+                        break
+
+                matched = [m for m in col if re.search(pattern, m.path, re.IGNORECASE)]
+                sys.stdout.write(
+                    f"\n🔍 Found {len(matched)} templates matching "
+                    f"'{Color.wrap(pattern, Color.YELLOW)}':\n\n"
+                )
+                for m in sorted(matched, key=lambda x: x.path):
+                    sys.stdout.write(f"  {Color.wrap('📄', Color.CYAN)} {m.path}\n")
                 return
             if not col:
                 if not getattr(args, "pipeline", None):

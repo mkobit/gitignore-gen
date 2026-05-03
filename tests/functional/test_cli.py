@@ -13,6 +13,36 @@ async def test_cli_ls(templates_dir: Path):
 
 
 @pytest.mark.asyncio
+async def test_cli_search(templates_dir: Path, capsys: pytest.CaptureFixture[str]):
+    """Test the 'search' subcommand."""
+    # Search for Python in fixtures
+    await async_main(
+        ["search", "--local-dir", str(templates_dir), "--include-regex", "Python"]
+    )
+    captured = capsys.readouterr()
+    assert "🔍 Found" in captured.out
+    assert "Python.gitignore" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_dry_run(templates_dir: Path, capsys: pytest.CaptureFixture[str]):
+    """Test 'generate' with --dry-run."""
+    await async_main(
+        [
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "Python",
+            "--dry-run",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "📦 Dry run" in captured.out
+    assert "+" in captured.out
+    assert "Python.gitignore" in captured.out
+
+
+@pytest.mark.asyncio
 async def test_cli_generate_to_stdout(
     templates_dir: Path, capsys: pytest.CaptureFixture[str]
 ):
