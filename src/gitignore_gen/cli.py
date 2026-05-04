@@ -126,7 +126,7 @@ class TemplateMember(ABC):
     """Abstract interface for a single template file in a source."""
 
     def __init__(self, path: str, source_label: str, ref_label: str):
-        self.path = path
+        self.path = path  # Canonical POSIX relative path
         self.source_label = source_label
         self.ref_label = ref_label
         self.content: str | None = None
@@ -530,10 +530,6 @@ def _create_parser() -> argparse.ArgumentParser:
     )
     output.add_argument("--section-header-template", metavar="STR")
 
-    # Stub Domains
-    subparsers.add_parser("gitattributes", help="Manage .gitattributes (TBD).")
-    subparsers.add_parser("jj", help="Manage Jujutsu configuration (TBD).")
-
     return parser
 
 
@@ -659,33 +655,34 @@ async def _do_generate(args: argparse.Namespace, col: list[TemplateMember]) -> N
             )
         return
 
-    if args.section_order == "lexicographic":
-        col.sort(key=lambda x: x.path)
-    f_header, s_tmpl = _get_headers(args)
-    sections: list[str] = []
-    for m in col:
-        if m.content:
-            if getattr(args, "include_section_header", True):
-                sections.append(
-                    s_tmpl.format(
-                        path=m.path,
-                        source=m.source_label,
-                        ref=m.ref_label,
-                        content=m.content,
+    if args.domain == "gitignore":
+        if args.section_order == "lexicographic":
+            col.sort(key=lambda x: x.path)
+        f_header, s_tmpl = _get_headers(args)
+        sections: list[str] = []
+        for m in col:
+            if m.content:
+                if getattr(args, "include_section_header", True):
+                    sections.append(
+                        s_tmpl.format(
+                            path=m.path,
+                            source=m.source_label,
+                            ref=m.ref_label,
+                            content=m.content,
+                        )
                     )
-                )
-            else:
-                sections.append(f"{m.content}\n\n")
-    final_output = f_header + "".join(sections)
-    if args.output:
+                else:
+                    sections.append(f"{m.content}\n\n")
+        final_output = f_header + "".join(sections)
+        if args.output:
 
-        def write_file():
-            Path(args.output).write_text(final_output, encoding="utf-8")
+            def write_file():
+                Path(args.output).write_text(final_output, encoding="utf-8")
 
-        await asyncio.to_thread(write_file)
-        logger.info("Successfully wrote output to %s", args.output)
-    else:
-        sys.stdout.write(final_output)
+            await asyncio.to_thread(write_file)
+            logger.info("Successfully wrote output to %s", args.output)
+        else:
+            sys.stdout.write(final_output)
 
 
 async def async_main(argv: list[str] | None = None) -> None:
@@ -693,10 +690,6 @@ async def async_main(argv: list[str] | None = None) -> None:
     parser = _create_parser()
     args = parser.parse_args(argv)
     _setup_logging(cast("int", getattr(args, "log_level", 1)))
-
-    if args.domain in {"gitattributes", "jj"}:
-        sys.stdout.write(f"\n🛠️  Domain '{args.domain}' is not implemented yet.\n\n")
-        return
 
     try:
 
@@ -730,8 +723,8 @@ async def async_main(argv: list[str] | None = None) -> None:
                         (
                             a.choices
                             for a in parser._actions  # noqa: SLF001
-                            if isinstance(a, argparse._SubParsersAction)
-                        ),  # noqa: SLF001
+                            if isinstance(a, argparse._SubParsersAction)  # noqa: SLF001
+                        ),
                         {},
                     )
                     gi_parser = choices.get("gitignore")

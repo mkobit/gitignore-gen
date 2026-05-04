@@ -240,18 +240,6 @@ async def test_cli_section_order_lexicographic(
 
 
 @pytest.mark.asyncio
-async def test_cli_stubs(capsys: pytest.CaptureFixture[str]):
-    """Test stub domains."""
-    await async_main(["jj"])
-    captured = capsys.readouterr()
-    assert "Domain 'jj' is not implemented yet" in captured.out
-
-    await async_main(["gitattributes"])
-    captured2 = capsys.readouterr()
-    assert "Domain 'gitattributes' is not implemented yet" in captured2.out
-
-
-@pytest.mark.asyncio
 async def test_handle_inclusion_edge_case():
     """Test _handle_inclusion with an unknown destination."""
     res = await _handle_inclusion("unknown", "val", Mock(), [], Mock())
