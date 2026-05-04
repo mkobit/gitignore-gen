@@ -67,14 +67,6 @@ SCRIPT_SCRIPT=$(curl -sSfL $SCRIPT_URL)
 python3 -c "$SCRIPT_SCRIPT" gitignore generate $(python3 -c "$SCRIPT_SCRIPT" gitignore ls | fzf --multi)
 ```
 
-## Coverage Report
-The project maintains a strict quality gate with 100% test coverage.
-
-| File | Statements | Missing | Coverage |
-|------|------------|---------|----------|
-| `src/gitignore_gen/cli.py` | 419 | 0 | 100% |
-| **Total** | **420** | **0** | **100%** |
-
 ## Storage & caching
 Repository archives (.tar.gz) are stored locally to avoid redundant downloads.
 The default location is `$XDG_CACHE_HOME/gitfiles-gen` or `~/.cache/gitfiles-gen`.
