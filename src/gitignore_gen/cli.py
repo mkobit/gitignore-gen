@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Usage (ephemeral):
 #   SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
-#   curl -sSfL $SCRIPT_URL | python3 - generate Python
+#   curl -sSfL $SCRIPT_URL | python3 - gitignore generate Python
 #
 # Development commands:
 #   uv run ruff check .
@@ -13,44 +13,23 @@
 # dependencies = []
 # ///
 
-"""Generator to compose .gitignore templates from upstream sources.
+"""Toolkit to compose configuration files for Git and other VCS.
 
 Source:  https://github.com/github/gitignore
 Mirrors: https://codeload.github.com (default)
 
 Example usage:
-  # Define the script URL for convenience
-  SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
+  # Search for gitignore templates
+  git-compose gitignore search Python
 
-  # List all available templates
-  curl -sSfL $SCRIPT_URL | python3 - ls
+  # Generate a gitignore file
+  git-compose gitignore generate Python macOS --output .gitignore
 
-  # List templates matching a regex
-  curl -sSfL $SCRIPT_URL | python3 - ls --include-regex '.*Python.*'
-
-  # Generate a combined file for a typical cross-platform project
-  curl -sSfL $SCRIPT_URL | python3 - generate Python macOS Windows Node \\
-    --output .gitignore
-
-  # Sequential pipeline with multiple sources and custom injections
-  curl -sSfL $SCRIPT_URL | python3 - generate \\
+  # Advanced pipeline with local sources
+  git-compose gitignore generate \\
     --repo github/gitignore Python macOS \\
-    --include-text "# Local Fixes" --include-local-file .gitignore.custom \\
     --local-dir ./templates Python
-
-Storage & caching:
-  Repository archives (.tar.gz) are stored locally to avoid redundant downloads.
-  The default location is $XDG_CACHE_HOME/gitignore-gen or ~/.cache/gitignore-gen.
-  In restricted environments, it falls back to /tmp/gitignore-gen.
-
-  Note: This tool does not automatically purge old archives. To reclaim space,
-  manually delete the cache directory.
 """
-
-# TODO (Out of scope):
-# - Support multiple sources in a single run (e.g., --source name=internal,...).
-# - Built-in .netrc support for private internal repositories.
-# - Optional delegation of downloads to the `gh api` CLI tool if installed.
 
 from __future__ import annotations
 
@@ -73,7 +52,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_REPO = "github/gitignore"
 
-logger = logging.getLogger("gitignore-compose")
+logger = logging.getLogger("git-compose")
 
 
 def _get_default_cache() -> Path:
@@ -85,8 +64,8 @@ def _get_default_cache() -> Path:
 
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
     if xdg_cache:
-        return Path(xdg_cache) / "gitignore-gen"
-    return home / ".cache" / "gitignore-gen"
+        return Path(xdg_cache) / "git-compose"
+    return home / ".cache" / "git-compose"
 
 
 def _parse_duration(duration_str: str) -> datetime.timedelta:
@@ -147,7 +126,7 @@ class TemplateMember(ABC):
     """Abstract interface for a single template file in a source."""
 
     def __init__(self, path: str, source_label: str, ref_label: str):
-        self.path = path  # Canonical POSIX relative path
+        self.path = path
         self.source_label = source_label
         self.ref_label = ref_label
         self.content: str | None = None
@@ -215,7 +194,7 @@ class LiteralTemplateMember(TemplateMember):
 
 
 class TemplateSource(ABC):
-    """Abstract interface for a source of gitignore templates."""
+    """Abstract interface for a source of templates."""
 
     @abstractmethod
     async def get_members(self) -> list[TemplateMember]:
@@ -265,23 +244,23 @@ class GitHubArchiveSource(TemplateSource):
         cache_file = cache_dir / f"{slug}_{self.ref}.tar.gz"
 
         if cache_file.exists():
-            now = datetime.datetime.now(tz=datetime.timezone.utc)
-            mtime = datetime.datetime.fromtimestamp(
-                cache_file.stat().st_mtime, tz=datetime.timezone.utc
-            )
-            period = cast("str", self.args.refresh_period)
-            if (now - mtime) < _parse_duration(period):
-                logger.info("Using cached archive from %s", cache_file)
-                try:
+            try:
+                now = datetime.datetime.now(tz=datetime.timezone.utc)
+                mtime = datetime.datetime.fromtimestamp(
+                    cache_file.stat().st_mtime, tz=datetime.timezone.utc
+                )
+                period = cast("str", self.args.refresh_period)
+                if (now - mtime) < _parse_duration(period):
+                    logger.info("Using cached archive from %s", cache_file)
                     return cache_file.read_bytes()
-                except Exception:
-                    logger.warning("Failed to read cache file")
+            except Exception:
+                logger.warning("Failed to read cache file")
 
         url = f"{base_url.rstrip('/')}/{self.repo}/tar.gz/{self.ref}"
         logger.info("Downloading archive for %s @ %s", self.repo, self.ref)
 
         try:
-            headers = {"User-Agent": "gitignore-gen-script"}
+            headers = {"User-Agent": "git-compose-script"}
             token = os.environ.get("GITHUB_TOKEN")
             no_auth = getattr(self.args, "no_auth", False)
             if not no_auth and token and "github.com" in url:
@@ -404,7 +383,6 @@ class SelectionRequest:
         """Check if a template member matches this request."""
         n = m.path.rsplit("/", 1)[-1]
 
-        # Helper to check match with optional .gitignore suffix
         def name_match(target: str, query: str, case_sensitive: bool = True) -> bool:
             if not case_sensitive:
                 target, query = target.lower(), query.lower()
@@ -481,8 +459,12 @@ def _add_selection_group(parser: argparse.ArgumentParser) -> None:
 def _create_parser() -> argparse.ArgumentParser:
     """Define the command line interface with subcommands."""
     parser = argparse.ArgumentParser(
-        description="Generator to compose .gitignore templates."
+        description="Toolkit to compose configuration files for Git and other VCS."
     )
+    subparsers = parser.add_subparsers(dest="domain", required=True, title="Domains")
+
+    # gitignore Domain
+    gitignore = subparsers.add_parser("gitignore", help="Manage .gitignore files.")
     common = argparse.ArgumentParser(add_help=False)
 
     source = common.add_argument_group("Repository source")
@@ -493,12 +475,7 @@ def _create_parser() -> argparse.ArgumentParser:
     source.add_argument("--tag", action=PipelineAction, metavar="TAG")
     source.add_argument("--sha", action=PipelineAction, metavar="HASH")
 
-    local = common.add_argument_group(
-        "Local sources",
-        description=(
-            "Use templates from a local directory or archive instead of the network."
-        ),
-    )
+    local = common.add_argument_group("Local sources")
     local.add_argument("--local-dir", action=PipelineAction, type=Path, metavar="PATH")
     local.add_argument(
         "--local-archive", action=PipelineAction, type=Path, metavar="PATH"
@@ -511,21 +488,21 @@ def _create_parser() -> argparse.ArgumentParser:
     storage.add_argument("--log-level", type=int, choices=[0, 1, 2], default=1)
     storage.add_argument("--refresh-period", metavar="DURATION", default="7d")
 
-    subparsers = parser.add_subparsers(dest="command", required=True, title="Commands")
+    gi_sub = gitignore.add_subparsers(dest="command", required=True, title="Commands")
 
-    ls_parser = subparsers.add_parser("ls", help="List templates.", parents=[common])
+    ls_parser = gi_sub.add_parser("ls", help="List templates.", parents=[common])
     ls_parser.add_argument(
         "templates", nargs="*", action=PipelineAction, metavar="TEMPLATE"
     )
     _add_selection_group(ls_parser)
 
-    search_parser = subparsers.add_parser(
-        "search", help="Search for templates.", parents=[common]
+    search_parser = gi_sub.add_parser(
+        "search", help="Search templates.", parents=[common]
     )
     _add_selection_group(search_parser)
 
-    gen_parser = subparsers.add_parser(
-        "generate", help="Generate .gitignore.", parents=[common]
+    gen_parser = gi_sub.add_parser(
+        "generate", help="Generate .gitignore.", parents=[common], aliases=["gen"]
     )
     gen_parser.add_argument(
         "templates", nargs="*", action=PipelineAction, metavar="TEMPLATE"
@@ -552,6 +529,10 @@ def _create_parser() -> argparse.ArgumentParser:
         dest="include_section_header",
     )
     output.add_argument("--section-header-template", metavar="STR")
+
+    # Stub Domains
+    subparsers.add_parser("gitattributes", help="Manage .gitattributes (TBD).")
+    subparsers.add_parser("jj", help="Manage Jujutsu configuration (TBD).")
 
     return parser
 
@@ -652,7 +633,7 @@ async def _run_pipeline(args: argparse.Namespace) -> list[TemplateMember]:
 def _get_headers(args: argparse.Namespace) -> tuple[str, str]:
     """Resolve formatting templates for the final output."""
     f_tmpl = getattr(args, "file_header_template", None) or (
-        "\n# Generated by gitignore-gen\n# Date: {date}\n\n"
+        "\n# Generated by git-compose\n# Date: {date}\n\n"
     )
     s_tmpl = getattr(args, "section_header_template", None) or (
         "### BEGIN {path} (Source: {source}@{ref}) ###\n{content}\n"
@@ -712,6 +693,11 @@ async def async_main(argv: list[str] | None = None) -> None:
     parser = _create_parser()
     args = parser.parse_args(argv)
     _setup_logging(cast("int", getattr(args, "log_level", 1)))
+
+    if args.domain in {"gitattributes", "jj"}:
+        sys.stdout.write(f"\n🛠️  Domain '{args.domain}' is not implemented yet.\n\n")
+        return
+
     try:
 
         async def run_pipeline_and_output():
@@ -723,14 +709,12 @@ async def async_main(argv: list[str] | None = None) -> None:
                     )
                 return
             if args.command == "search":
-                # Find the first regex in pipeline or default
                 pattern = ".*"
                 pipeline = cast("list[PipelineEvent]", getattr(args, "pipeline", []))
                 for ev in pipeline:
                     if ev.dest == "include_regex":
                         pattern = cast("str", ev.value)
                         break
-
                 matched = [m for m in col if re.search(pattern, m.path, re.IGNORECASE)]
                 sys.stdout.write(
                     f"\n🔍 Found {len(matched)} templates matching "
@@ -741,7 +725,18 @@ async def async_main(argv: list[str] | None = None) -> None:
                 return
             if not col:
                 if not getattr(args, "pipeline", None):
-                    parser.print_help()
+                    # Safely find the gitignore subparser to print its help
+                    choices = next(
+                        (
+                            a.choices
+                            for a in parser._actions  # noqa: SLF001
+                            if isinstance(a, argparse._SubParsersAction)
+                        ),  # noqa: SLF001
+                        {},
+                    )
+                    gi_parser = choices.get("gitignore")
+                    if gi_parser:
+                        gi_parser.print_help()
                 else:
                     logger.warning("No templates were collected.")
                 return

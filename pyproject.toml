@@ -1,7 +1,7 @@
 [project]
-name = "gitignore-compose"
+name = "git-compose"
 version = "0.1.0"
-description = "A zero-dependency tool to compose .gitignore files from remote template repositories."
+description = "A zero-dependency toolkit to compose configuration files for Git and other VCS."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -18,7 +18,7 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-gitignore-compose = "gitignore_gen.cli:main"
+git-compose = "gitignore_gen.cli:main"
 
 [build-system]
 requires = ["hatchling"]

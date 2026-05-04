@@ -26,6 +26,7 @@ async def test_local_archive_source(tmp_path: Path, capsys: pytest.CaptureFixtur
 
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-archive",
             str(archive_path),
@@ -44,6 +45,12 @@ async def test_local_archive_source_failure(tmp_path: Path):
     """Test local archive source with a non-existent file."""
     with pytest.raises(SystemExit) as exc:
         await async_main(
-            ["ls", "--local-archive", str(tmp_path / "missing.tar.gz"), "Python"]
+            [
+                "gitignore",
+                "ls",
+                "--local-archive",
+                str(tmp_path / "missing.tar.gz"),
+                "Python",
+            ]
         )
     assert exc.value.code == 1

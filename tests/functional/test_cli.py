@@ -9,7 +9,7 @@ from gitignore_gen.cli import _handle_inclusion, async_main
 @pytest.mark.asyncio
 async def test_cli_ls(templates_dir: Path):
     """Test the 'ls' subcommand using a local directory."""
-    await async_main(["ls", "--local-dir", str(templates_dir), "Python"])
+    await async_main(["gitignore", "ls", "--local-dir", str(templates_dir), "Python"])
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,14 @@ async def test_cli_search(templates_dir: Path, capsys: pytest.CaptureFixture[str
     """Test the 'search' subcommand."""
     # Search for Python in fixtures
     await async_main(
-        ["search", "--local-dir", str(templates_dir), "--include-regex", "Python"]
+        [
+            "gitignore",
+            "search",
+            "--local-dir",
+            str(templates_dir),
+            "--include-regex",
+            "Python",
+        ]
     )
     captured = capsys.readouterr()
     assert "🔍 Found" in captured.out
@@ -29,6 +36,7 @@ async def test_cli_dry_run(templates_dir: Path, capsys: pytest.CaptureFixture[st
     """Test 'generate' with --dry-run."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -49,6 +57,7 @@ async def test_cli_generate_to_stdout(
     """Test generating a gitignore to stdout."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -68,6 +77,7 @@ async def test_cli_generate_to_file(templates_dir: Path, tmp_path: Path):
     output_file = tmp_path / ".gitignore"
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -91,6 +101,7 @@ async def test_cli_include_text(
     """Test including literal text."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -116,6 +127,7 @@ async def test_cli_include_local_file(
 
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -135,6 +147,7 @@ async def test_cli_fail_on_missing(templates_dir: Path):
     with pytest.raises(SystemExit):
         await async_main(
             [
+                "gitignore",
                 "generate",
                 "--local-dir",
                 str(templates_dir),
@@ -150,6 +163,7 @@ async def test_cli_no_fail_on_missing(
     """Test --no-fail-on-missing."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -171,6 +185,7 @@ async def test_cli_custom_header(
     # Note: using generate first then arguments
     await async_main(
         [
+            "gitignore",
             "generate",
             "Python",
             "--local-dir",
@@ -191,6 +206,7 @@ async def test_cli_no_templates_collected(
     """Test when pipeline exists but no templates are collected."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -207,6 +223,7 @@ async def test_cli_section_order_lexicographic(
     """Test lexicographic section order."""
     await async_main(
         [
+            "gitignore",
             "generate",
             "--local-dir",
             str(templates_dir),
@@ -220,6 +237,18 @@ async def test_cli_section_order_lexicographic(
     )
     captured = capsys.readouterr()
     assert captured.out != ""
+
+
+@pytest.mark.asyncio
+async def test_cli_stubs(capsys: pytest.CaptureFixture[str]):
+    """Test stub domains."""
+    await async_main(["jj"])
+    captured = capsys.readouterr()
+    assert "Domain 'jj' is not implemented yet" in captured.out
+
+    await async_main(["gitattributes"])
+    captured2 = capsys.readouterr()
+    assert "Domain 'gitattributes' is not implemented yet" in captured2.out
 
 
 @pytest.mark.asyncio

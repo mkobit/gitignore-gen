@@ -39,7 +39,7 @@ def test_get_default_cache_xdg(tmp_path):
     """Test XDG_CACHE_HOME usage."""
     with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
         cache = _get_default_cache()
-        assert cache == tmp_path / "gitignore-gen"
+        assert cache == tmp_path / "git-compose"
 
 
 def test_get_default_cache_fallback():
@@ -73,7 +73,7 @@ async def test_async_main_runtime_error():
     """Test runtime error handling in async_main."""
     with patch("gitignore_gen.cli._run_pipeline", side_effect=RuntimeError("Oops")):
         with pytest.raises(SystemExit) as exc:
-            await async_main(["ls"])
+            await async_main(["gitignore", "ls"])
         assert exc.value.code == 1
 
 
@@ -89,6 +89,6 @@ def test_main_keyboard_interrupt():
 async def test_generate_no_templates(capsys):
     """Test generate command with no matches."""
     # Running without arguments triggers help/warning
-    await async_main(["generate"])
+    await async_main(["gitignore", "generate"])
     captured = capsys.readouterr()
-    assert "Generator to compose" in captured.out
+    assert "Generate .gitignore" in captured.out

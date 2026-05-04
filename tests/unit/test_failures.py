@@ -37,6 +37,7 @@ async def test_github_archive_source(
     ):
         await async_main(
             [
+                "gitignore",
                 "generate",
                 "--repo",
                 "user/repo",
@@ -62,6 +63,7 @@ async def test_github_archive_download_failure(tmp_path: Path):
         with pytest.raises(SystemExit) as exc:
             await async_main(
                 [
+                    "gitignore",
                     "ls",
                     "--repo",
                     "user/repo",
@@ -81,7 +83,9 @@ async def test_tar_read_failure(tmp_path: Path):
         tar.addfile(tarfile.TarInfo(name="Python.gitignore"), io.BytesIO(b"content"))
 
     with patch("tarfile.TarFile.extractfile", side_effect=Exception("Read Error")):
-        await async_main(["generate", "--local-archive", str(archive_path), "Python"])
+        await async_main(
+            ["gitignore", "generate", "--local-archive", str(archive_path), "Python"]
+        )
 
 
 @pytest.mark.asyncio
@@ -93,7 +97,9 @@ async def test_local_file_read_failure(tmp_path: Path):
     p.write_text("content", encoding="utf-8")
 
     with patch("pathlib.Path.read_text", side_effect=Exception("IO Error")):
-        await async_main(["generate", "--local-dir", str(templates_dir), "Python"])
+        await async_main(
+            ["gitignore", "generate", "--local-dir", str(templates_dir), "Python"]
+        )
 
 
 @pytest.mark.asyncio
@@ -118,6 +124,7 @@ async def test_cache_write_failure(tmp_path: Path):
     ):
         await async_main(
             [
+                "gitignore",
                 "ls",
                 "--repo",
                 "user/repo",
@@ -146,6 +153,7 @@ async def test_cache_period_logic(tmp_path: Path):
     with patch("urllib.request.urlopen") as mock_url:
         await async_main(
             [
+                "gitignore",
                 "generate",
                 "--repo",
                 "user/repo",
@@ -179,6 +187,7 @@ async def test_cache_period_logic(tmp_path: Path):
     with patch("urllib.request.urlopen", return_value=mock_response) as mock_url:
         await async_main(
             [
+                "gitignore",
                 "generate",
                 "--repo",
                 "user/repo",
@@ -217,6 +226,7 @@ async def test_cache_read_failure(tmp_path: Path):
         with patch("urllib.request.urlopen", return_value=mock_response):
             await async_main(
                 [
+                    "gitignore",
                     "ls",
                     "--repo",
                     "user/repo",
