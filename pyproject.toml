@@ -1,5 +1,5 @@
 [project]
-name = "git-compose"
+name = "gitfiles-gen"
 version = "0.1.0"
 description = "A zero-dependency toolkit to compose configuration files for Git and other VCS."
 readme = "README.md"
@@ -18,7 +18,7 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-git-compose = "gitignore_gen.cli:main"
+gitfiles-gen = "gitignore_gen.cli:main"
 
 [build-system]
 requires = ["hatchling"]

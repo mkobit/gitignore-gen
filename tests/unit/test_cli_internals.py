@@ -39,7 +39,7 @@ def test_get_default_cache_xdg(tmp_path):
     """Test XDG_CACHE_HOME usage."""
     with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
         cache = _get_default_cache()
-        assert cache == tmp_path / "git-compose"
+        assert cache == tmp_path / "gitfiles-gen"
 
 
 def test_get_default_cache_fallback():
