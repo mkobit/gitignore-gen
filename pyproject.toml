@@ -1,7 +1,7 @@
 [project]
-name = "gitfiles-gen"
+name = "vcs-gen"
 version = "0.1.0"
-description = "A zero-dependency toolkit to compose configuration files for Git and other VCS."
+description = "A zero-dependency toolkit to compose configuration files for Git, JJ, and other VCS."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -18,7 +18,7 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
-gitfiles-gen = "gitignore_gen.cli:main"
+vcs-gen = "gitignore_gen.cli:main"
 
 [build-system]
 requires = ["hatchling"]

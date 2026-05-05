@@ -1,19 +1,20 @@
-# gitfiles-gen
+# vcs-gen
 
 [![CI](https://github.com/mkobit/gitignore-gen/actions/workflows/ci.yml/badge.svg)](https://github.com/mkobit/gitignore-gen/actions/workflows/ci.yml)
-[![Python Versions](https://img.shields.io/pypi/pyversions/gitfiles-gen)](https://pypi.org/project/gitfiles-gen/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/vcs-gen)](https://pypi.org/project/vcs-gen/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/mkobit/gitignore-gen)
 
-A zero-dependency toolkit to compose configuration files for Git and other VCS.
+A zero-dependency toolkit to compose configuration files for Git, JJ, and other VCS.
 
-## Why gitfiles-gen?
+## Why vcs-gen?
 
-Unlike other tools that simply fetch a single template, **gitfiles-gen** allows you to build a sophisticated pipeline of templates, local files, and literal text—all processed in strict left-to-right order.
+Unlike other tools that simply fetch a single template, **vcs-gen** allows you to build a sophisticated pipeline of templates, local files, and literal text—all processed in strict left-to-right order.
 
 - **Sequential Pipeline**: Compose multiple sources (GitHub, local dirs, archives) in a single command.
+- **Multi-VCS Ready**: Support for `.gitignore` (Git/JJ), `.gitattributes`, and more.
 - **Zero Runtime Dependencies**: Single-file core using only the Python standard library.
-- **High Integrity**: 100% test coverage and strict type safety.
+- **High Integrity**: Rigorous test coverage and strict type safety.
 - **Visual Feedback**: Search and preview templates with dry-run support.
 
 ## Installation
@@ -26,7 +27,7 @@ curl -sSfL $SCRIPT_URL | python3 - gitignore generate Python macOS --output .git
 
 ### via uv
 ```bash
-uvx gitfiles-gen gitignore generate Python
+uvx vcs-gen gitignore generate Python
 ```
 
 ## Usage Examples
@@ -34,25 +35,25 @@ uvx gitfiles-gen gitignore generate Python
 ### Searching & Listing
 ```bash
 # Search for templates with visual feedback
-gitfiles-gen gitignore search --include-regex '.*Go.*'
+vcs-gen gitignore search --include-regex '.*Go.*'
 
 # List all available templates from the default repo
-gitfiles-gen gitignore ls
+vcs-gen gitignore ls
 ```
 
 ### Generating & Dry-run
 ```bash
 # Preview what would be selected without writing any files
-gitfiles-gen gitignore generate Python macOS --dry-run
+vcs-gen gitignore generate Python macOS --dry-run
 
 # Generate a combined file for a typical project
-gitfiles-gen gitignore generate Python macOS Windows --output .gitignore
+vcs-gen gitignore generate Python macOS Windows --output .gitignore
 ```
 
 ### Advanced Pipeline
 Interleave local templates with upstream ones:
 ```bash
-gitfiles-gen gitignore generate \
+vcs-gen gitignore generate \
   --repo github/gitignore Python macOS \
   --include-text "# Developer Customizations" \
   --local-dir ./my-templates Python
@@ -69,7 +70,7 @@ python3 -c "$SCRIPT_SCRIPT" gitignore generate $(python3 -c "$SCRIPT_SCRIPT" git
 
 ## Storage & caching
 Repository archives (.tar.gz) are stored locally to avoid redundant downloads.
-The default location is `$XDG_CACHE_HOME/gitfiles-gen` or `~/.cache/gitfiles-gen`.
-In restricted environments, it falls back to `/tmp/gitfiles-gen`.
+The default location is `$XDG_CACHE_HOME/vcs-gen` or `~/.cache/vcs-gen`.
+In restricted environments, it falls back to `/tmp/vcs-gen`.
 
 *Note: This tool does not automatically purge old archives. To reclaim space, manually delete the cache directory.*
