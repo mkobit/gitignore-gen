@@ -17,7 +17,7 @@ async def test_cli_remote_e2e(tmp_path: Path):
 
     await async_main(
         [
-            "generate",
+            "gitignore", "generate",
             "--repo",
             "github/gitignore",
             "--sha",

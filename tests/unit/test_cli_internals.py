@@ -51,7 +51,7 @@ def test_get_default_cache_fallback():
     ):
         # Should fallback to TMPDIR or /tmp
         cache = _get_default_cache()
-        assert "/custom/tmp" in str(cache)
+        assert "/custom/tmp" in cache.as_posix()
 
 
 def test_parse_duration():
