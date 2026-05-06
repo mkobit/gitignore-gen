@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from gitignore_gen.cli import async_main
+from vcs_gen.cli import async_main
 
 
 @pytest.mark.remote

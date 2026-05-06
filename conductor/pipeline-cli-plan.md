@@ -2,7 +2,7 @@
 Implement a pipeline-based CLI architecture for `gitignore-gen` that guarantees sequential insertion of templates and allows source-specific options (like headers and include patterns) to be applied sequentially from left to right.
 
 # Key Files & Context
-- `src/gitignore_gen/cli.py`
+- `src/vcs_gen/cli.py`
 
 # Implementation Steps
 1.  **Pipeline Argparse Action**:

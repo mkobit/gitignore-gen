@@ -21,7 +21,7 @@ Unlike other tools that simply fetch a single template, **vcs-gen** allows you t
 
 ### Ephemeral usage (No install required)
 ```bash
-SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
+SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/vcs_gen.py"
 curl -sSfL $SCRIPT_URL | python3 - gitignore generate Python macOS --output .gitignore
 ```
 

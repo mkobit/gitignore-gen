@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Usage (ephemeral):
-#   SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/gitignore_gen.py"
+#   SCRIPT_URL="https://gist.github.com/mkobit/gitignore-gen/raw/vcs_gen.py"
 #   curl -sSfL $SCRIPT_URL | python3 - gitignore generate Python
 #
 # Development commands:

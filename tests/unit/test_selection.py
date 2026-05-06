@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from gitignore_gen.cli import SelectionRequest, TemplateMember
+from vcs_gen.cli import SelectionRequest, TemplateMember
 
 
 @pytest.mark.asyncio

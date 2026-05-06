@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from gitignore_gen.cli import (
+from vcs_gen.cli import (
     Color,
     _get_default_cache,
     _parse_duration,
@@ -71,7 +71,7 @@ def test_parse_duration():
 @pytest.mark.asyncio
 async def test_async_main_runtime_error():
     """Test runtime error handling in async_main."""
-    with patch("gitignore_gen.cli._run_pipeline", side_effect=RuntimeError("Oops")):
+    with patch("vcs_gen.cli._run_pipeline", side_effect=RuntimeError("Oops")):
         with pytest.raises(SystemExit) as exc:
             await async_main(["gitignore", "ls"])
         assert exc.value.code == 1
