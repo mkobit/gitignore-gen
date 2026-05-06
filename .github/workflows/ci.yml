@@ -75,7 +75,7 @@ jobs:
         run: uv python install 3.10
       
       - name: Run remote tests
-        run: uv run pytest -m remote tests/
+        run: uv run pytest -m remote tests/ --no-cov
 
   standalone-check:
     needs: lint
