@@ -75,7 +75,7 @@ jobs:
         run: uv python install 3.10
       
       - name: Run remote tests
-        run: uv run pytest -m remote tests/
+        run: uv run pytest -m remote tests/ --no-cov
 
   standalone-check:
     needs: lint
@@ -87,7 +87,7 @@ jobs:
       - name: Verify standalone script execution
         run: |
           # Copy the core logic to a standalone file
-          cp src/gitignore_gen/cli.py standalone.py
+          cp src/vcs_gen/cli.py standalone.py
           # Run it with a clean Python environment (no installed package)
           # We just check --help to ensure it doesn't have missing imports
           python3 standalone.py --help

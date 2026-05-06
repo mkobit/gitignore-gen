@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from gitignore_gen.cli import async_main
+from vcs_gen.cli import async_main
 
 
 @pytest.mark.remote
@@ -17,6 +17,7 @@ async def test_cli_remote_e2e(tmp_path: Path):
 
     await async_main(
         [
+            "gitignore",
             "generate",
             "--repo",
             "github/gitignore",

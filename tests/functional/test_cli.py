@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from gitignore_gen.cli import _handle_inclusion, async_main
+from vcs_gen.cli import _handle_inclusion, async_main
 
 
 @pytest.mark.asyncio

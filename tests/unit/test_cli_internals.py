@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from gitignore_gen.cli import (
+from vcs_gen.cli import (
     Color,
     _get_default_cache,
     _parse_duration,
@@ -39,7 +39,7 @@ def test_get_default_cache_xdg(tmp_path):
     """Test XDG_CACHE_HOME usage."""
     with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
         cache = _get_default_cache()
-        assert cache == tmp_path / "gitfiles-gen"
+        assert cache == tmp_path / "vcs-gen"
 
 
 def test_get_default_cache_fallback():
@@ -51,7 +51,7 @@ def test_get_default_cache_fallback():
     ):
         # Should fallback to TMPDIR or /tmp
         cache = _get_default_cache()
-        assert "/custom/tmp" in str(cache)
+        assert "/custom/tmp" in cache.as_posix()
 
 
 def test_parse_duration():
@@ -71,7 +71,7 @@ def test_parse_duration():
 @pytest.mark.asyncio
 async def test_async_main_runtime_error():
     """Test runtime error handling in async_main."""
-    with patch("gitignore_gen.cli._run_pipeline", side_effect=RuntimeError("Oops")):
+    with patch("vcs_gen.cli._run_pipeline", side_effect=RuntimeError("Oops")):
         with pytest.raises(SystemExit) as exc:
             await async_main(["gitignore", "ls"])
         assert exc.value.code == 1
