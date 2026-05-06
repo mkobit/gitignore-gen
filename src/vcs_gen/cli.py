@@ -318,7 +318,7 @@ class LocalArchiveSource(TemplateSource):
 
     @property
     def ref_label(self) -> str:
-        return str(self.path)
+        return self.path.as_posix()
 
     async def get_members(self) -> list[TemplateMember]:
         try:
@@ -355,7 +355,7 @@ class LocalDirSource(TemplateSource):
 
     @property
     def ref_label(self) -> str:
-        return str(self.path)
+        return self.path.as_posix()
 
     async def get_members(self) -> list[TemplateMember]:
         return await asyncio.to_thread(self._sync_get_members)
