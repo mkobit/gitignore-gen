@@ -222,6 +222,7 @@ class GitHubArchiveSource(TemplateSource):
         self.ref = ref
         self.args = args
         self._tar: tarfile.TarFile | None = None
+        self.archive_path: Path | None = None
 
     @property
     def source_label(self) -> str:
@@ -241,18 +242,18 @@ class GitHubArchiveSource(TemplateSource):
 
         slug = self.repo.replace("/", "_")
         cache_dir = cast("Path", self.args.download_location)
-        cache_file = cache_dir / f"{slug}_{self.ref}.tar.gz"
+        self.archive_path = cache_dir / f"{slug}_{self.ref}.tar.gz"
 
-        if cache_file.exists():
+        if self.archive_path.exists():
             try:
                 now = datetime.datetime.now(tz=datetime.timezone.utc)
                 mtime = datetime.datetime.fromtimestamp(
-                    cache_file.stat().st_mtime, tz=datetime.timezone.utc
+                    self.archive_path.stat().st_mtime, tz=datetime.timezone.utc
                 )
                 period = cast("str", self.args.refresh_period)
                 if (now - mtime) < _parse_duration(period):
-                    logger.info("Using cached archive from %s", cache_file)
-                    return cache_file.read_bytes()
+                    logger.info("Using cached archive from %s", self.archive_path)
+                    return self.archive_path.read_bytes()
             except Exception:
                 logger.warning("Failed to read cache file")
 
@@ -270,8 +271,8 @@ class GitHubArchiveSource(TemplateSource):
             with urllib.request.urlopen(req) as response:  # noqa: S310
                 data = response.read()
                 try:
-                    cache_file.parent.mkdir(parents=True, exist_ok=True)
-                    cache_file.write_bytes(data)
+                    self.archive_path.parent.mkdir(parents=True, exist_ok=True)
+                    self.archive_path.write_bytes(data)
                 except OSError as e:
                     logger.warning("Cache write failed (proceeding in memory): %s", e)
                 return data
@@ -303,6 +304,16 @@ class GitHubArchiveSource(TemplateSource):
     async def close(self) -> None:
         if self._tar:
             await asyncio.to_thread(self._tar.close)
+        if (
+            getattr(self.args, "delete_archive", False) and self.archive_path
+        ):  # pragma: no cover
+
+            def unlink_file():
+                if self.archive_path.exists():
+                    self.archive_path.unlink()
+
+            await asyncio.to_thread(unlink_file)
+            logger.info("Deleted archive %s", self.archive_path)
 
 
 class LocalArchiveSource(TemplateSource):
@@ -429,6 +440,8 @@ class PipelineAction(argparse.Action):
             namespace.pipeline = pipeline
 
         pipeline_list = cast("list[PipelineEvent]", pipeline)
+        if values is None:
+            return
         if isinstance(values, (list, tuple)):
             for val in values:
                 pipeline_list.append(PipelineEvent(self.dest, val, option_string))
@@ -456,39 +469,12 @@ def _add_selection_group(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _create_parser() -> argparse.ArgumentParser:
-    """Define the command line interface with subcommands."""
-    parser = argparse.ArgumentParser(
-        description="Toolkit to compose configuration files for Git and other VCS."
-    )
-    subparsers = parser.add_subparsers(dest="domain", required=True, title="Domains")
-
-    # gitignore Domain
-    gitignore = subparsers.add_parser("gitignore", help="Manage .gitignore files.")
-    common = argparse.ArgumentParser(add_help=False)
-
-    source = common.add_argument_group("Repository source")
-    source.add_argument("--repo", action=PipelineAction, default=_DEFAULT_REPO)
-    source.add_argument("--no-auth", action="store_true")
-    source.add_argument("--base-url", action=PipelineAction, metavar="URL")
-    source.add_argument("--branch", action=PipelineAction, default="main")
-    source.add_argument("--tag", action=PipelineAction, metavar="TAG")
-    source.add_argument("--sha", action=PipelineAction, metavar="HASH")
-
-    local = common.add_argument_group("Local sources")
-    local.add_argument("--local-dir", action=PipelineAction, type=Path, metavar="PATH")
-    local.add_argument(
-        "--local-archive", action=PipelineAction, type=Path, metavar="PATH"
-    )
-
-    storage = common.add_argument_group("Storage and logging")
-    storage.add_argument(
-        "--download-location", type=Path, default=_get_default_cache(), metavar="DIR"
-    )
-    storage.add_argument("--log-level", type=int, choices=[0, 1, 2], default=1)
-    storage.add_argument("--refresh-period", metavar="DURATION", default="7d")
-
-    gi_sub = gitignore.add_subparsers(dest="command", required=True, title="Commands")
+def _add_domain_subparser(
+    subparsers: argparse._SubParsersAction, domain: str, help_text: str, common: argparse.ArgumentParser
+) -> None:
+    """Add a domain subparser (e.g., gitignore, gitattributes)."""
+    parser = subparsers.add_parser(domain, help=help_text)
+    gi_sub = parser.add_subparsers(dest="command", required=True, title="Commands")
 
     ls_parser = gi_sub.add_parser("ls", help="List templates.", parents=[common])
     ls_parser.add_argument(
@@ -499,10 +485,13 @@ def _create_parser() -> argparse.ArgumentParser:
     search_parser = gi_sub.add_parser(
         "search", help="Search templates.", parents=[common]
     )
+    search_parser.add_argument(
+        "include_regex", nargs="?", action=PipelineAction, metavar="PATTERN"
+    )
     _add_selection_group(search_parser)
 
     gen_parser = gi_sub.add_parser(
-        "generate", help="Generate .gitignore.", parents=[common], aliases=["gen"]
+        "generate", help=f"Generate .{domain}.", parents=[common], aliases=["gen"]
     )
     gen_parser.add_argument(
         "templates", nargs="*", action=PipelineAction, metavar="TEMPLATE"
@@ -529,6 +518,45 @@ def _create_parser() -> argparse.ArgumentParser:
         dest="include_section_header",
     )
     output.add_argument("--section-header-template", metavar="STR")
+
+
+def _create_parser() -> argparse.ArgumentParser:
+    """Define the command line interface with subcommands."""
+    parser = argparse.ArgumentParser(
+        description="Toolkit to compose configuration files for Git and other VCS."
+    )
+    subparsers = parser.add_subparsers(dest="domain", required=True, title="Domains")
+
+    common = argparse.ArgumentParser(add_help=False)
+
+    source = common.add_argument_group("Repository source")
+    source.add_argument("--repo", action=PipelineAction, default=_DEFAULT_REPO)
+    source.add_argument("--no-auth", action="store_true")
+    source.add_argument("--base-url", action=PipelineAction, metavar="URL")
+    source.add_argument("--branch", action=PipelineAction, default="main")
+    source.add_argument("--tag", action=PipelineAction, metavar="TAG")
+    source.add_argument("--sha", action=PipelineAction, metavar="HASH")
+
+    local = common.add_argument_group("Local sources")
+    local.add_argument("--local-dir", action=PipelineAction, type=Path, metavar="PATH")
+    local.add_argument(
+        "--local-archive", action=PipelineAction, type=Path, metavar="PATH"
+    )
+
+    storage = common.add_argument_group("Storage and logging")
+    storage.add_argument(
+        "--download-location", type=Path, default=_get_default_cache(), metavar="DIR"
+    )
+    storage.add_argument("--log-level", type=int, choices=[0, 1, 2], default=1)
+    storage.add_argument("--refresh-period", metavar="DURATION", default="7d")
+    storage.add_argument(
+        "--delete-archive", action="store_true", help="Delete archive after run."
+    )
+
+    _add_domain_subparser(subparsers, "gitignore", "Manage .gitignore files.", common)
+    _add_domain_subparser(
+        subparsers, "gitattributes", "Manage .gitattributes files.", common
+    )
 
     return parser
 
@@ -617,7 +645,7 @@ async def _run_pipeline(args: argparse.Namespace) -> list[TemplateMember]:
             else:
                 src = await get_src()
                 col.extend(await _handle_inclusion(d, v, src, all_m, args))
-        if args.command == "search":
+        if args.command == "search" or (args.command == "ls" and not col):
             src = await get_src()
             col = all_m
         return col
@@ -655,7 +683,7 @@ async def _do_generate(args: argparse.Namespace, col: list[TemplateMember]) -> N
             )
         return
 
-    if args.domain == "gitignore":
+    if args.domain in {"gitignore", "gitattributes"}:
         if args.section_order == "lexicographic":
             col.sort(key=lambda x: x.path)
         f_header, s_tmpl = _get_headers(args)

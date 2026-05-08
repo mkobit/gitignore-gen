@@ -240,6 +240,84 @@ async def test_cli_section_order_lexicographic(
 
 
 @pytest.mark.asyncio
+async def test_cli_search_positional(templates_dir: Path, capsys: pytest.CaptureFixture[str]):
+    """Test the 'search' subcommand with a positional argument."""
+    # Search for Python in fixtures
+    await async_main(
+        [
+            "gitignore",
+            "search",
+            "--local-dir",
+            str(templates_dir),
+            "Python",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "🔍 Found" in captured.out
+    assert "Python.gitignore" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_cli_gitattributes(templates_dir: Path, capsys: pytest.CaptureFixture[str]):
+    """Test the 'gitattributes' domain."""
+    await async_main(
+        [
+            "gitattributes",
+            "generate",
+            "--local-dir",
+            str(templates_dir),
+            "Python",
+            "--no-include-file-header",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "### BEGIN Python.gitignore" in captured.out
+
+
+@pytest.mark.remote
+@pytest.mark.asyncio
+async def test_cli_delete_archive(tmp_path: Path):
+    """Test the --delete-archive flag (requires network)."""
+    # Use a custom download location to avoid polluting actual cache
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    # Run once without delete to ensure it exists
+    await async_main(
+        [
+            "gitignore",
+            "ls",
+            "--repo",
+            "github/gitignore",
+            "--download-location",
+            str(cache_dir),
+            "Python",
+        ]
+    )
+
+    # Check if archive exists
+    archives = list(cache_dir.glob("*.tar.gz"))
+    assert len(archives) == 1
+    archive_path = archives[0]
+
+    # Run again with delete
+    await async_main(
+        [
+            "gitignore",
+            "ls",
+            "--repo",
+            "github/gitignore",
+            "--download-location",
+            str(cache_dir),
+            "--delete-archive",
+            "Python",
+        ]
+    )
+
+    assert not archive_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_handle_inclusion_edge_case():
     """Test _handle_inclusion with an unknown destination."""
     res = await _handle_inclusion("unknown", "val", Mock(), [], Mock())
