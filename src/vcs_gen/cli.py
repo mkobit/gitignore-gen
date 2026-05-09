@@ -556,8 +556,7 @@ async def _handle_inclusion(
             err = f"No match for {d}={v} in {src.source_label}"
             raise ValueError(err)
         if not getattr(args, "dry_run", False):
-            for m in matches:
-                await m.load()
+            await asyncio.gather(*[m.load() for m in matches])
         return matches
     if d == "include_text":
         return [LiteralTemplateMember("literal", "text", cast("str", v))]
