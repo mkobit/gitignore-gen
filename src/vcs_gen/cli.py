@@ -239,9 +239,10 @@ class GitHubArchiveSource(TemplateSource):
         if base_url is None:
             base_url = "https://codeload.github.com"
 
-        slug = self.repo.replace("/", "_")
+        slug = self.repo.replace("/", "_").replace("\\", "_")
+        ref_slug = self.ref.replace("/", "_").replace("\\", "_")
         cache_dir = cast("Path", self.args.download_location)
-        cache_file = cache_dir / f"{slug}_{self.ref}.tar.gz"
+        cache_file = cache_dir / f"{slug}_{ref_slug}.tar.gz"
 
         if cache_file.exists():
             try:
